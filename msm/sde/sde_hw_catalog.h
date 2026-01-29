@@ -55,6 +55,7 @@
 #define SDE_HW_VER_720	SDE_HW_VER(7, 2, 0) /* yupik */
 #define SDE_HW_VER_810	SDE_HW_VER(8, 1, 0) /* waipio */
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
+#define SDE_HW_VER_840	SDE_HW_VER(8, 4, 0) /* lemans */
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_860  SDE_HW_VER(8, 6, 0) /* ravelin */
 #define SDE_HW_VER_870	SDE_HW_VER(8, 7, 0) /* malabar */
