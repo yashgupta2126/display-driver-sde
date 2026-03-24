@@ -3463,15 +3463,41 @@ error:
 	return rc;
 }
 
+static int dsi_display_bind(struct device *dev, struct device *master, void *data);
+static void dsi_display_unbind(struct device *dev, struct device *master, void *data);
+
+static const struct component_ops dsi_display_comp_ops = {
+	.bind = dsi_display_bind,
+	.unbind = dsi_display_unbind,
+};
+
 static int dsi_host_attach(struct mipi_dsi_host *host,
 			   struct mipi_dsi_device *dsi)
 {
+	int rc = 0;
+	struct dsi_display *display;
+	display = to_dsi_display(host);
+
+	struct platform_device *pdev = display->pdev;
+
+	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
+	if (rc)
+		DSI_ERR("component add failed, rc=%d\n", rc);
+
+	DSI_DEBUG("component add success: %s\n", display->name);
 	return 0;
 }
 
 static int dsi_host_detach(struct mipi_dsi_host *host,
 			   struct mipi_dsi_device *dsi)
 {
+	struct dsi_display *display;
+	display = to_dsi_display(host);
+
+	struct platform_device *pdev = display->pdev;
+
+	component_del(&pdev->dev, &dsi_display_comp_ops);
+
 	return 0;
 }
 
@@ -6353,11 +6379,6 @@ static void dsi_display_unbind(struct device *dev,
 
 	mutex_unlock(&display->display_lock);
 }
-
-static const struct component_ops dsi_display_comp_ops = {
-	.bind = dsi_display_bind,
-	.unbind = dsi_display_unbind,
-};
 
 static struct platform_driver dsi_display_driver = {
 	.probe = dsi_display_dev_probe,
