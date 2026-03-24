@@ -5612,6 +5612,13 @@ static int _dsi_display_dev_init(struct dsi_display *display)
 		       display->name, rc);
 		goto error;
 	}
+
+	rc = dsi_display_mipi_host_init(display);
+	if (rc) {
+		DSI_ERR("[%s] failed to initialize mipi host, rc=%d\n",
+		       display->name, rc);
+		goto error;
+	}
 error:
 	mutex_unlock(&display->display_lock);
 	return rc;
@@ -5633,6 +5640,11 @@ static int _dsi_display_dev_deinit(struct dsi_display *display)
 	}
 
 	mutex_lock(&display->display_lock);
+
+	rc = dsi_display_mipi_host_deinit(display);
+	if (rc)
+		DSI_ERR("[%s] failed to deinit mipi hosts, rc=%d\n",
+		       display->name, rc);
 
 	rc = dsi_display_res_deinit(display);
 	if (rc)
@@ -6165,12 +6177,6 @@ static int dsi_display_bind(struct device *dev,
 	}
 
 	dsi_display_update_byte_intf_div(display);
-	rc = dsi_display_mipi_host_init(display);
-	if (rc) {
-		DSI_ERR("[%s] failed to initialize mipi host, rc=%d\n",
-		       display->name, rc);
-		goto error_ctrl_deinit;
-	}
 
 	rc = dsi_panel_drv_init(display->panel, &display->host);
 	if (rc) {
@@ -6267,11 +6273,12 @@ static void dsi_display_unbind(struct device *dev,
 	/* remove the display from the manager list */
 	dsi_display_manager_unregister(display);
 
-	rc = dsi_display_mipi_host_deinit(display);
-	if (rc)
-		DSI_ERR("[%s] failed to deinit mipi hosts, rc=%d\n",
-		       display->name,
-		       rc);
+	if (display->panel) {
+		rc = display->panel->panel_ops.gpio_release(display->panel);
+		if (rc)
+			DSI_ERR("[%s] failed to release gpios, rc=%d\n", display->panel->name,
+			       rc);
+	}
 
 	display_for_each_ctrl(i, display) {
 		display_ctrl = &display->ctrl[i];
