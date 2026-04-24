@@ -6056,6 +6056,7 @@ static void _sde_get_hw_caps_for_yupik(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
 	sde_cfg->mdss_hw_block_size = 0x158;
 	set_bit(SDE_FEATURE_RC_LM_FLUSH_OVERRIDE, sde_cfg->features);
+	set_bit(SDE_FEATURE_VIRTUAL_CONNECTOR_WB, sde_cfg->features);
 }
 
 static void _sde_get_hw_caps_for_diwali(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)

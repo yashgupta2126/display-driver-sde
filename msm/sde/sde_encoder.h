@@ -1213,7 +1213,8 @@ static inline bool sde_encoder_is_wb_display(struct drm_encoder *drm_enc)
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
-	return sde_enc && (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL);
+	return sde_enc && (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+		sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL);
 }
 
 /*

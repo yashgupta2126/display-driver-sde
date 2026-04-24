@@ -2447,7 +2447,10 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				display,
 				&wb_ops,
 				connector_poll,
-				DRM_MODE_CONNECTOR_VIRTUAL, false);
+				test_bit(SDE_FEATURE_VIRTUAL_CONNECTOR_WB,
+					 sde_kms->catalog->features) ?
+					 DRM_MODE_CONNECTOR_WRITEBACK :
+					 DRM_MODE_CONNECTOR_VIRTUAL, false);
 		if (!IS_ERR_OR_NULL(connector)) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
@@ -2761,7 +2764,8 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 
 		sde_conn = to_sde_connector(conn);
 
-		if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+		if (sde_conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+		    sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
 			sde_connector_setup_obj_id(conn,
 				sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
 		} else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {

@@ -2701,6 +2701,7 @@ static int _sde_rm_populate_requirements(
 		}
 
 		if (sde_crtc && (conn_state->connector->connector_type ==
+				DRM_MODE_CONNECTOR_WRITEBACK ||
 				DRM_MODE_CONNECTOR_VIRTUAL) &&
 				(reqs->topology->num_lm == 1) &&
 				sde_crtc->mixers[0].hw_lm) {

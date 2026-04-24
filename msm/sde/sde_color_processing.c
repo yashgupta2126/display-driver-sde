@@ -2011,7 +2011,8 @@ static int _sde_cp_crtc_check_pu_features(struct drm_crtc *crtc)
 				if (conn->state && (conn->state->crtc != crtc))
 					continue;
 
-				if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+				if (conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+				    conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
 					continue;
 
 				sde_conn_state = to_sde_connector_state(conn->state);
@@ -2188,7 +2189,8 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 				if (conn->state && (conn->state->crtc != crtc))
 					continue;
 
-				if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+				if (conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+				    conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
 					continue;
 
 				sde_conn_state = to_sde_connector_state(conn->state);

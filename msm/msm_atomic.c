@@ -55,8 +55,9 @@ static struct drm_connector_state *_msm_get_conn_state(struct drm_crtc_state *cr
 
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		if (drm_connector_mask(conn) & crtc_state->connector_mask) {
-			if (!(conn_state && conn->connector_type ==
-					DRM_MODE_CONNECTOR_VIRTUAL))
+			if (!conn_state ||
+			    (conn->connector_type != DRM_MODE_CONNECTOR_WRITEBACK &&
+			     conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL))
 				conn_state = conn->state;
 		}
 	}
