@@ -10,7 +10,11 @@
 #include <linux/stdarg.h>
 #include <linux/debugfs.h>
 #include <linux/list.h>
+#if __has_include(<soc/qcom/minidump.h>)
 #include <soc/qcom/minidump.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #include <drm/drm_print.h>
 #include "msm_drv.h"
 

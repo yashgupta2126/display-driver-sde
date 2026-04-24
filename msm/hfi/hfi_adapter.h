@@ -21,6 +21,7 @@
 #include "hfi_packer.h"
 #include "hfi_unpacker.h"
 #endif
+#include "hfi_packet.h"
 
 /**
  * HFI_PACK_KEY - Pack given property id, version and dsize to u32 key.

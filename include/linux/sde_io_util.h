@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012, 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __SDE_IO_UTIL_H__
@@ -11,7 +12,11 @@
 #include <linux/regulator/consumer.h>
 #include <linux/i2c.h>
 #include <linux/types.h>
+#if __has_include(<linux/soc/qcom/msm_mmrm.h>)
 #include <linux/soc/qcom/msm_mmrm.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 
 #ifdef DEBUG
 #define DEV_DBG(fmt, args...)   pr_err(fmt, ##args)

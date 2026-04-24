@@ -14,7 +14,11 @@
 #include <linux/usb/phy.h>
 #include <linux/jiffies.h>
 #include <linux/pm_qos.h>
+#if __has_include(<linux/ipc_logging.h>)
 #include <linux/ipc_logging.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 
 #include "sde_connector.h"
 
@@ -4233,7 +4237,7 @@ static void dp_display_set_mst_state(void *dp_display,
 		dp->mst.cbs.set_drv_state(dp_display, mst_state);
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void dp_display_remove(struct platform_device *pdev)
 #else
 static int dp_display_remove(struct platform_device *pdev)
@@ -4268,7 +4272,7 @@ static int dp_display_remove(struct platform_device *pdev)
 	}
 
 end:
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return rc;
 #else
 	return;
@@ -4357,7 +4361,7 @@ static struct platform_driver dp_display_driver = {
 	.probe  = dp_display_probe,
 	.remove = dp_display_remove,
 	.driver = {
-		.name = "msm-dp-display",
+		.name = "sde-dp-display",
 		.of_match_table = dp_dt_match,
 		.suppress_bind_attrs = true,
 		.pm = &dp_pm_ops,

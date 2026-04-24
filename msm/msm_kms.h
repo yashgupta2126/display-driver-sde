@@ -186,20 +186,6 @@ static inline void msm_kms_init(struct msm_kms *kms,
 	kms->funcs = funcs;
 }
 
-#if IS_ENABLED(CONFIG_DRM_MSM_MDP4)
-struct msm_kms *mdp4_kms_init(struct drm_device *dev);
-#else
-static inline
-struct msm_kms *mdp4_kms_init(struct drm_device *dev) { return NULL; };
-#endif /* CONFIG_DRM_MSM_MDP4 */
-#if IS_ENABLED(CONFIG_DRM_MSM_MDP5)
-struct msm_kms *mdp5_kms_init(struct drm_device *dev);
-int msm_mdss_init(struct drm_device *dev);
-void msm_mdss_destroy(struct drm_device *dev);
-struct msm_kms *mdp5_kms_init(struct drm_device *dev);
-int msm_mdss_enable(struct msm_mdss *mdss);
-int msm_mdss_disable(struct msm_mdss *mdss);
-#else
 static inline int msm_mdss_init(struct drm_device *dev)
 {
 	return 0;
@@ -219,7 +205,6 @@ static inline int msm_mdss_disable(struct msm_mdss *mdss)
 {
 	return 0;
 }
-#endif /* CONFIG_DRM_MSM_MDP5 */
 
 struct msm_kms *sde_kms_init(struct drm_device *dev);
 

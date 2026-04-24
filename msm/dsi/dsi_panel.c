@@ -10,6 +10,7 @@
 #include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pwm.h>
+#include <linux/backlight.h>
 #include <video/mipi_display.h>
 
 #include "dsi_panel.h"

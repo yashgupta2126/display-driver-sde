@@ -280,7 +280,7 @@ static int shd_crtc_validate_shared_display(struct drm_crtc *crtc,
 		struct shd_display *display = shd_crtc->display;
 		struct drm_crtc_state *base_crtc_state;
 
-		base_crtc_state = drm_atomic_get_existing_crtc_state(state->state,
+		base_crtc_state = drm_atomic_get_new_crtc_state(state->state,
 								     display->base->crtc);
 		if (!base_crtc_state)
 			base_crtc_state = display->base->crtc->state;
@@ -338,7 +338,7 @@ static int shd_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state 
 	struct sde_crtc *base_sde_crtc;
 
 	base_drm_crtc_state =
-		drm_atomic_get_existing_crtc_state(state->state,
+		drm_atomic_get_new_crtc_state(state->state,
 						   shd_crtc->display->base->crtc);
 	if (!base_drm_crtc_state)
 		base_drm_crtc_state = shd_crtc->display->base->crtc->state;
@@ -1024,7 +1024,7 @@ static int shd_display_create_backlight(struct drm_connector *connector)
 	snprintf(bl_node_name, sizeof(bl_node_name), "panel%u-backlight",
 		 connector->connector_type_id - 1);
 	c_conn->bl_device = backlight_device_register(bl_node_name, connector->dev->dev, c_conn,
-						      &shd_backlight_device_ops, &props);
+					&shd_backlight_device_ops, &props);
 
 	return 0;
 }
@@ -1633,7 +1633,7 @@ error:
  * sde_shd_remove - unload shared display module
  * @pdev:	Pointer to platform device
  */
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void sde_shd_remove(struct platform_device *pdev)
 #else
 static int sde_shd_remove(struct platform_device *pdev)
@@ -1655,7 +1655,7 @@ static int sde_shd_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 
 end:
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return rc;
 #endif
 }

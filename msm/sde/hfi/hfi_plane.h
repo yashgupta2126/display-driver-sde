@@ -64,6 +64,7 @@ int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu);
 void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
 	bool use_lock);
 #else
+int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu);
 int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
 {
 	return -HFI_ERROR;
@@ -71,9 +72,6 @@ int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
 
 void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
 	bool use_lock);
-{
-	return -HFI_ERROR;
-}
 #endif // CONFIG_MDSS_HFI
 
 #endif  // _SDE_PLANE_HFI_H_

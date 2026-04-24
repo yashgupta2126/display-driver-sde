@@ -1405,7 +1405,7 @@ fail:
 	return ret;
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void sde_cesta_remove(struct platform_device *pdev)
 #else
 static int sde_cesta_remove(struct platform_device *pdev)
@@ -1415,7 +1415,7 @@ static int sde_cesta_remove(struct platform_device *pdev)
 
 	sde_cesta_deinit(pdev, cesta);
 
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return 0;
 #endif
 }

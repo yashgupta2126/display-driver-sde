@@ -7,7 +7,13 @@
 #define pr_fmt(fmt)	"[drm:%s:%d]: " fmt, __func__, __LINE__
 
 #include <linux/clk.h>
+#if __has_include(<linux/clk/qcom.h>) && \
+	__has_include(<linux/soc/qcom/msm_mmrm.h>)
 #include <linux/clk/qcom.h>
+#include <linux/soc/qcom/msm_mmrm.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/string.h>
@@ -15,8 +21,8 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/of_platform.h>
-#include <linux/pm_wakeup.h>
-
+#include <linux/device.h>
+#include <linux/pm.h>
 #include <linux/sde_io_util.h>
 #include <linux/sde_rsc.h>
 #include <linux/version.h>
@@ -25,7 +31,6 @@
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 #include <synx_api.h>
 #endif /* CONFIG_QTI_HW_FENCE */
-#include <linux/soc/qcom/msm_mmrm.h>
 
 #include "sde_power_handle.h"
 #include "sde_trace.h"
@@ -275,8 +280,10 @@ static int sde_power_parse_dt_clock(struct platform_device *pdev,
 		mp->num_clk = 0;
 		goto clk_err;
 	}
+#if __has_include(<soc/qcomm/msm_mmrm.h>)
 	is_mmrm_supported = mmrm_client_check_scaling_supported(MMRM_CLIENT_CLOCK,
 				MMRM_CLIENT_DOMAIN_DISPLAY);
+#endif
 
 	for (i = 0; i < num_clk; i++) {
 		of_property_read_string_index(pdev->dev.of_node, "clock-names",
@@ -633,7 +640,7 @@ exit:
 	return ret;
 }
 
-int sde_power_mmrm_callback(
+static int sde_power_mmrm_callback(
 	struct mmrm_client_notifier_data *notifier_data)
 {
 	struct dss_clk_mmrm_cb *mmrm_cb_data =
@@ -1454,7 +1461,9 @@ void sde_power_set_clk_retention(struct sde_power_handle *phandle,
 		return;
 	}
 
+#if __has_include(<clk/qcom.h>)
 	qcom_clk_set_flags(clk, enable ? CLKFLAG_RETAIN_MEM : CLKFLAG_NORETAIN_MEM);
+#endif
 }
 
 struct sde_power_event *sde_power_handle_register_event(

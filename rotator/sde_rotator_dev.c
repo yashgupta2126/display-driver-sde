@@ -3537,7 +3537,7 @@ error_rotator_base_init:
  * sde_rotator_remove - rotator device remove method.
  * @pdev: Pointer rotator platform device.
  */
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void sde_rotator_remove(struct platform_device *pdev)
 #else
 static int sde_rotator_remove(struct platform_device *pdev)
@@ -3549,7 +3549,7 @@ static int sde_rotator_remove(struct platform_device *pdev)
 	rot_dev = platform_get_drvdata(pdev);
 	if (rot_dev == NULL) {
 		SDEDEV_ERR(&pdev->dev, "fail get rotator drvdata\n");
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
                 return 0;
 #else
                 return;
@@ -3566,7 +3566,7 @@ static int sde_rotator_remove(struct platform_device *pdev)
 	sde_rotator_core_destroy(rot_dev->mgr);
 	sde_rotator_base_destroy(rot_dev->mdata);
 	kfree(rot_dev);
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
         return 0;
 #endif
 }
@@ -3605,13 +3605,13 @@ static int sde_rotator_probe(struct platform_device *pdev)
  * sde_rotator_remove - rotator device remove method.
  * @pdev: Pointer rotator platform device.
  */
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void sde_rotator_remove(struct platform_device *pdev)
 #else
 static int sde_rotator_remove(struct platform_device *pdev)
 #endif
 {
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
         return 0;
 #endif
 }

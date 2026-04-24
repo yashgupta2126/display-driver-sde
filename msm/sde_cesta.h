@@ -6,8 +6,11 @@
 #ifndef __SDE_CESTA_H__
 #define __SDE_CESTA_H__
 
+#if __has_include(<soc/qcom/crm.h>)
 #include <soc/qcom/crm.h>
-
+#else
+#include "qcom_display_internal.h"
+#endif
 #include "sde_power_handle.h"
 
 #define MAX_SCC_BLOCK		9

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #if !defined(TRACE_SDE_ROTATOR_H) || defined(TRACE_HEADER_MULTI_READ)
 #define TRACE_SDE_ROTATOR_H
@@ -227,7 +228,7 @@ TRACE_EVENT(rot_mark_write,
 	),
 	TP_fast_assign(
 			__entry->pid = pid;
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 			__assign_str(trace_name);
 #else
 			__assign_str(trace_name, name);
@@ -248,7 +249,7 @@ TRACE_EVENT(rot_trace_counter,
 	),
 	TP_fast_assign(
 			__entry->pid = current->tgid;
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
                         __assign_str(counter_name);
 #else
                         __assign_str(counter_name, name);
@@ -285,7 +286,7 @@ TRACE_EVENT(sde_rot_evtlog,
 	),
 	TP_fast_assign(
 			__entry->pid = current->tgid;
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
                         __assign_str(evtlog_tag);
 #else
                         __assign_str(evtlog_tag, tag);

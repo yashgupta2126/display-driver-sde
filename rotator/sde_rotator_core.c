@@ -574,15 +574,19 @@ static int sde_rotator_secure_session_ctrl(bool enable)
 	u64 mem_size;
 	u32 vmid;
 	struct qtee_shm shm;
+	#if __has_include(<linux/qtee_shmbridge.h>)
 	bool qtee_en = qtee_shmbridge_is_enabled();
+	#endif
 
 	if (test_bit(SDE_CAPS_SEC_ATTACH_DETACH_SMMU, mdata->sde_caps_map)) {
 
 		if (qtee_en) {
+			#if __has_include(<linux/qtee_shmbridge.h>)
 			ret = qtee_shmbridge_allocate_shm(sizeof(uint32_t),
 				&shm);
 			if (ret)
 				return -ENOMEM;
+			#endif
 
 			sid_info = (uint32_t *) shm.vaddr;
 			mem_addr = shm.paddr;

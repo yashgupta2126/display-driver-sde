@@ -9,7 +9,7 @@
 
 #include <linux/types.h>
 #include <linux/spinlock.h>
-#include <msm_ext_display.h>
+#include <linux/soc/qcom/msm_ext_display.h>
 #include "hdmi_regs.h"
 #include "msm_drv.h"
 #include "hdmi_drm.h"
@@ -188,11 +188,11 @@ int hdmi_ddc_write(struct hdmi *hdmi, u16 addr, u8 offset,
 int hdmi_ddc_write_helper(struct hdmi_ddc *ddc);
 int hdmi_ddc_read_helper(struct hdmi_ddc *ddc);
 #else
-int hdmi_ddc_write_helper(struct hdmi_ddc *ddc)
+static inline int hdmi_ddc_write_helper(struct hdmi_ddc *ddc)
 {
 	return 0;
 }
-int hdmi_ddc_read_helper(struct hdmi_ddc *ddc)
+static inline int hdmi_ddc_read_helper(struct hdmi_ddc *ddc)
 {
 	return 0;
 }

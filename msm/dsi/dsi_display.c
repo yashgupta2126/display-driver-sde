@@ -10,8 +10,11 @@
 #include <linux/err.h>
 #include <linux/version.h>
 #include <linux/ktime.h>
+#if __has_include(<linux/pinctrl/qcom-pinctrl.h>)
 #include <linux/pinctrl/qcom-pinctrl.h>
-
+#else
+#include "qcom_display_internal.h"
+#endif
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
 #include "sde_connector.h"
@@ -507,7 +510,6 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	rc = msm_gpio_get_pin_address(display->disp_te_gpio, &te_res);
 	if (!rc)
 		DSI_ERR("Failed to get GPIO pin address\n");
-
 	/*
 	 * The FUNC_SEL value of the TLMM_GPIO_CFG register resets
 	 * to 0 after TE IRQ registration, disrupting GPIO functionality.
@@ -615,9 +617,13 @@ free_aspace_cb:
 	msm_gem_address_space_unregister_cb(display->aspace,
 			dsi_display_aspace_cb_locked, display);
 free_gem:
-	mutex_lock(&display->drm_dev->struct_mutex);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
+	mutex_lock(&display_ctrl->ctrl->ctrl_lock);
+#endif
 	msm_gem_free_object(display->tx_cmd_buf);
-	mutex_unlock(&display->drm_dev->struct_mutex);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
+	mutex_unlock(&display_ctrl->ctrl->ctrl_lock);
+#endif
 error:
 	return rc;
 }
@@ -999,7 +1005,7 @@ static int dsi_display_status_check_te(struct dsi_display *display,
 	return rc;
 }
 
-void dsi_display_toggle_error_interrupt_status(struct dsi_display * display, bool enable)
+static void dsi_display_toggle_error_interrupt_status(struct dsi_display *display, bool enable)
 {
 	int i = 0;
 	struct dsi_display_ctrl *ctrl;
@@ -4665,7 +4671,7 @@ static bool dsi_display_is_seamless_dfps_possible(
 	return true;
 }
 
-void dsi_display_update_byte_intf_div(struct dsi_display *display)
+static void dsi_display_update_byte_intf_div(struct dsi_display *display)
 {
 	struct dsi_host_common_cfg *config;
 	struct dsi_display_ctrl *m_ctrl;
@@ -6514,7 +6520,7 @@ end:
 	return rc;
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 void dsi_display_dev_remove(struct platform_device *pdev)
 #else
 int dsi_display_dev_remove(struct platform_device *pdev)
@@ -6564,7 +6570,7 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	devm_kfree(&pdev->dev, display);
 
 end:
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return rc;
 #else
 	return;
@@ -7316,7 +7322,7 @@ int dsi_display_get_mode_count(struct dsi_display *display,
 	return 0;
 }
 
-void dsi_display_adjust_mode_timing(struct dsi_display *display,
+static void dsi_display_adjust_mode_timing(struct dsi_display *display,
 			struct dsi_display_mode *dsi_mode,
 			int lanes, int bpp)
 {
@@ -7666,7 +7672,7 @@ static int _dsi_display_check_dms_caps(struct dsi_display *display,
 	return 0;
 }
 
-int dsi_display_get_modes_helper(struct dsi_display *display,
+static int dsi_display_get_modes_helper(struct dsi_display *display,
 	struct dsi_display_ctrl *ctrl, u32 timing_mode_count,
 	struct dsi_dfps_capabilities dfps_caps, struct dsi_qsync_capabilities *qsync_caps,
 	struct dsi_dyn_clk_caps *dyn_clk_caps, struct dsi_avr_capabilities *avr_caps,

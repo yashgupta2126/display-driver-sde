@@ -27,7 +27,11 @@
 #include <linux/of_irq.h>
 #include <linux/dma-buf.h>
 #include <linux/memblock.h>
+#if __has_include(<linux/soc/qcom/panel_event_notifier.h>)
 #include <linux/soc/qcom/panel_event_notifier.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
@@ -67,9 +71,15 @@
 #else
 #include <linux/qcom_scm.h>
 #endif
+#if __has_include(<linux/qcom-iommu-util.h>) && \
+	__has_include(<soc/qcom/secure_buffer.h>) && \
+	__has_include(<linux/qtee_shmbridge.h>)
 #include <linux/qcom-iommu-util.h>
 #include "soc/qcom/secure_buffer.h"
 #include <linux/qtee_shmbridge.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #ifdef CONFIG_DRM_SDE_VM
 #include <linux/gunyah/gh_irq_lend.h>
 #endif
@@ -346,6 +356,7 @@ static int _sde_kms_scm_call(struct sde_kms *sde_kms, int vmid)
 		return -EINVAL;
 	}
 
+	#if __has_include(<linux/qtee_shmbridge.h>)
 	if (qtee_en) {
 		ret = qtee_shmbridge_allocate_shm(num_sids * sizeof(uint32_t),
 			&shm);
@@ -360,7 +371,9 @@ static int _sde_kms_scm_call(struct sde_kms *sde_kms, int vmid)
 		 * client requirement.
 		 */
 		mem_size = sizeof(uint32_t) * num_sids;
-	} else {
+	}
+	#endif
+	else {
 		sec_sid = kcalloc(num_sids, sizeof(uint32_t), GFP_KERNEL);
 		if (!sec_sid)
 			return -ENOMEM;
@@ -388,25 +401,30 @@ static int _sde_kms_scm_call(struct sde_kms *sde_kms, int vmid)
 									vmid);
 		goto map_error;
 	}
+#if __has_include(<linux/qtee_shmbridge.h>)
 	SDE_DEBUG("calling scm_call for vmid 0x%x, num_sids %d, qtee_en %d",
 				vmid, num_sids, qtee_en);
+#endif
 
 	ret = qcom_scm_mem_protect_sd_ctrl(MDP_DEVICE_ID, mem_addr,
 				mem_size, vmid);
 	if (ret)
 		SDE_ERROR("Error:scm_call2, vmid %d, ret%d\n",
 				vmid, ret);
+#if __has_include(<linux/qtee_shmbridge.h>)
 	SDE_EVT32(MEM_PROTECT_SD_CTRL_SWITCH, MDP_DEVICE_ID, mem_size,
 			vmid, qtee_en, num_sids, ret);
+#endif
 
 	dma_unmap_single(&dummy, dma_handle,
 				num_sids * sizeof(uint32_t), DMA_TO_DEVICE);
 
 map_error:
+#if __has_include(<linux/qtee_shmbridge.h>)
 	if (qtee_en)
 		qtee_shmbridge_free_shm(&shm);
-	else
-		kfree(sec_sid);
+#endif
+	kfree(sec_sid);
 
 	return ret;
 }
@@ -848,15 +866,15 @@ static int _sde_kms_release_shared_buffer(unsigned long mem_addr,
 	pfn_end = (mem_addr + splash_buffer_size) >> PAGE_SHIFT;
 
 #if (KERNEL_VERSION(6, 3, 0) > LINUX_VERSION_CODE)
-	#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
 		memblock_free((unsigned int *)mem_addr, splash_buffer_size);
-	#else
+#else
 		ret = memblock_free(mem_addr, splash_buffer_size);
 		if (ret) {
 			SDE_ERROR("continuous splash memory free failed:%d\n", ret);
 			return ret;
 		}
-	#endif
+#endif
 #endif
 
 	for (pfn_idx = pfn_start; pfn_idx < pfn_end; pfn_idx++)
@@ -1090,7 +1108,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 		new_mode = _sde_kms_get_blank(crtc->state, connector->state);
 
 		if (old_conn_state->crtc) {
-			old_crtc_state = drm_atomic_get_existing_crtc_state(
+			old_crtc_state = drm_atomic_get_new_crtc_state(
 					old_state, old_conn_state->crtc);
 
 			old_fps = drm_mode_vrefresh(&old_crtc_state->mode);
@@ -1303,7 +1321,7 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 	return rc;
 }
 
-void sde_kms_vm_set_sid(struct sde_kms *sde_kms, u32 vm)
+static void sde_kms_vm_set_sid(struct sde_kms *sde_kms, u32 vm)
 {
 	struct drm_plane *plane;
 	struct drm_device *ddev;
@@ -1587,7 +1605,7 @@ static void sde_kms_vm_force_disable_idle_pc(struct sde_kms *sde_kms, enum sde_c
 	}
 }
 
-int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
+static int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
 	struct drm_atomic_state *state, bool is_primary)
 {
 	struct drm_crtc *crtc;
@@ -2121,7 +2139,7 @@ static void _sde_kms_release_displays(struct sde_kms *sde_kms)
 	sde_kms->dsi_display_count = 0;
 }
 
-int setup_hdmi_displays(struct drm_device *dev,
+static int setup_hdmi_displays(struct drm_device *dev,
 						struct msm_drm_private *priv,
 						struct sde_kms *sde_kms,
 						int max_encoders,
@@ -2218,7 +2236,7 @@ int setup_hdmi_displays(struct drm_device *dev,
 	return 0;
 }
 
-void setup_loopback_displays(struct drm_device *dev,
+static void setup_loopback_displays(struct drm_device *dev,
 	struct msm_drm_private *priv, struct sde_kms *sde_kms,
 	int max_encoders)
 {
@@ -2652,7 +2670,7 @@ static void _sde_kms_drm_obj_destroy(struct sde_kms *sde_kms)
 	_sde_kms_release_displays(sde_kms);
 }
 
-int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
+static int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
 {
 	int rc = 0;
 
@@ -2661,11 +2679,13 @@ int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
 		return -EINVAL;
 	}
 
+#if CONFIG_MDSS_HFI
 	rc = hfi_msm_drv_hfi_init(priv);
 	if (rc) {
 		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
 		return rc;
 	}
+#endif
 
 	rc = hfi_kms_reg_client(dev);
 	if (rc) {
@@ -4861,7 +4881,7 @@ end:
 }
 
 
-void sde_kms_display_early_wakeup(struct drm_device *dev,
+static void sde_kms_display_early_wakeup(struct drm_device *dev,
 				const int32_t connector_id)
 {
 	struct drm_connector_list_iter conn_iter;
@@ -4887,7 +4907,7 @@ void sde_kms_display_early_wakeup(struct drm_device *dev,
 	drm_connector_list_iter_end(&conn_iter);
 }
 
-void sde_kms_display_early_ept_hint(struct drm_device *dev,
+static void sde_kms_display_early_ept_hint(struct drm_device *dev,
 	const int32_t connector_id, u64 frame_interval, u64 ept_ns)
 {
 	struct drm_connector_list_iter conn_iter;
@@ -5019,7 +5039,7 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	msm_atomic_flush_display_threads(priv);
 }
 
-int sde_kms_idle_timer_control(struct msm_kms *kms, bool timer_state)
+static int sde_kms_idle_timer_control(struct msm_kms *kms, bool timer_state)
 {
 	struct sde_kms *sde_kms = to_sde_kms(kms);
 	int ret = 0;
@@ -5036,7 +5056,7 @@ int sde_kms_idle_timer_control(struct msm_kms *kms, bool timer_state)
 	return ret;
 }
 
-void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
+static void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
 	struct drm_device *dev;
@@ -5059,7 +5079,7 @@ void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
 	}
 }
 
-struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_state)
+static struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state;
 
@@ -6257,7 +6277,7 @@ power_error:
 	return rc;
 }
 
-int _sde_kms_get_tvm_inclusion_mem(struct sde_mdss_cfg *catalog, struct list_head *mem_list)
+static int _sde_kms_get_tvm_inclusion_mem(struct sde_mdss_cfg *catalog, struct list_head *mem_list)
 {
 	struct list_head temp_head;
 	struct msm_io_mem_entry *io_mem;

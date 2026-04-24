@@ -122,30 +122,30 @@ void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data);
 void sde_dp_hdcp2p2_deinit(void *input);
 struct sde_hdcp_ops *sde_dp_hdcp2p2_get(void *input);
 #else
-void *sde_hdcp_1x_init(struct sde_hdcp_init_data *init_data)
+static void *sde_hdcp_1x_init(struct sde_hdcp_init_data *init_data)
 {
 	return NULL;
 }
 
-void sde_hdcp_1x_deinit(void *input)
+static void sde_hdcp_1x_deinit(void *input)
 {
 }
 
-struct sde_hdcp_ops *sde_hdcp_1x_get(void *input)
-{
-	return NULL;
-}
-
-void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
+static struct sde_hdcp_ops *sde_hdcp_1x_get(void *input)
 {
 	return NULL;
 }
 
-void sde_dp_hdcp2p2_deinit(void *input)
+static void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
+{
+	return NULL;
+}
+
+static void sde_dp_hdcp2p2_deinit(void *input)
 {
 }
 
-struct sde_hdcp_ops *sde_dp_hdcp2p2_get(void *input)
+static struct sde_hdcp_ops *sde_dp_hdcp2p2_get(void *input)
 {
 	return NULL;
 }

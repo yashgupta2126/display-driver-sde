@@ -904,13 +904,15 @@ static int dp_hdcp2p2_main(void *data)
 {
 	struct dp_hdcp2p2_ctrl *ctrl = data;
 	enum hdcp_transport_wakeup_cmd cmd;
-	struct sched_param param = {.sched_priority = 16};
+	struct sched_attr attr = {
+		.size = sizeof(struct sched_attr),
+		.sched_policy = SCHED_FIFO,
+		.sched_priority = 16,
+	};
 
-	int ret = sched_setscheduler(current, SCHED_FIFO, &param);
-
+	int ret = sched_setattr_nocheck(current, &attr);
 	if (ret)
 		pr_err("Failed to set dp hdcp2p2 thread priority: %d\n", ret);
-
 	while (1) {
 		wait_event_idle(ctrl->wait_q,
 			!kfifo_is_empty(&ctrl->cmd_q) ||

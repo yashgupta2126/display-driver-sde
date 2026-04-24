@@ -1920,7 +1920,7 @@ rsc_alloc_fail:
 	return ret;
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void sde_rsc_remove(struct platform_device *pdev)
 #else
 static int sde_rsc_remove(struct platform_device *pdev)
@@ -1929,7 +1929,7 @@ static int sde_rsc_remove(struct platform_device *pdev)
 	struct sde_rsc_priv *rsc = platform_get_drvdata(pdev);
 
 	sde_rsc_deinit(pdev, rsc);
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return 0;
 #endif
 }
@@ -1952,7 +1952,7 @@ static int sde_rsc_rpmh_probe(struct platform_device *pdev)
 	return 0;
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 void  sde_rsc_rpmh_remove(struct platform_device *pdev)
 #else
 int  sde_rsc_rpmh_remove(struct platform_device *pdev)
@@ -1963,7 +1963,7 @@ int  sde_rsc_rpmh_remove(struct platform_device *pdev)
 	for (i = 0; i < MAX_RSC_COUNT; i++)
 		rpmh_dev[i] = NULL;
 
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return 0;
 #endif
 }

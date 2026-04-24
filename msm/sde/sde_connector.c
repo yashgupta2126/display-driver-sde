@@ -1134,7 +1134,7 @@ static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 	return rc;
 }
 
-void sde_connector_set_colorspace(struct sde_connector *c_conn)
+static void sde_connector_set_colorspace(struct sde_connector *c_conn)
 {
 	int rc = 0;
 
@@ -1447,7 +1447,7 @@ static bool sde_connector_power_on_off_frame(struct drm_connector *connector)
 	return false;
 }
 
-int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
+static int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
@@ -4548,11 +4548,13 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			"conn%u",
 			c_conn->base.base.id);
 
+#if CONFIG_MDSS_HFI
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = hfi_connector_init(connector_type, c_conn);
 		if (rc)
 			goto error_free_conn;
 	}
+#endif
 
 	rc = sde_connector_get_info(&c_conn->base, &display_info);
 	if (rc)

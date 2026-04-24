@@ -20,7 +20,11 @@
 #define __MSM_MMU_H__
 
 #include <linux/iommu.h>
+#if __has_include(<linux/qcom-iommu-util.h>)
 #include <linux/qcom-iommu-util.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #include <linux/dma-mapping.h>
 #include <linux/dma-map-ops.h>
 

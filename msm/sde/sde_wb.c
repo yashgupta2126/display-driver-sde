@@ -9,11 +9,14 @@
 #include <drm/sde_drm.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_modes.h>
+#include <linux/errno.h>
 
 #include "msm_kms.h"
 #include "sde_kms.h"
 #include "sde_wb.h"
 #include "sde_formats.h"
+#include "qcom_display_internal.h"
 
 /* maximum display mode resolution if not available from catalog */
 #define SDE_WB_MODE_MAX_WIDTH	5120
@@ -33,6 +36,45 @@ static const struct drm_display_mode sde_custom_wb_modes[] = {
 		5160, 5200, 0, 2560, 2608, 2616, 2622, 0,
 		DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_NVSYNC) },
 };
+
+static int sde_convert_umode(struct drm_device *dev,
+				struct drm_display_mode *mode,
+				const struct drm_mode_modeinfo *u)
+{
+	if (!dev || !mode || !u)
+		return -EINVAL;
+
+	/* Copy timing fields */
+	mode->clock       = u->clock;
+
+	mode->hdisplay    = u->hdisplay;
+	mode->hsync_start = u->hsync_start;
+	mode->hsync_end   = u->hsync_end;
+	mode->htotal      = u->htotal;
+	mode->hskew       = u->hskew;
+
+	mode->vdisplay    = u->vdisplay;
+	mode->vsync_start = u->vsync_start;
+	mode->vsync_end   = u->vsync_end;
+	mode->vtotal      = u->vtotal;
+	mode->vscan       = u->vscan;
+
+	/* Flags & type */
+	mode->flags       = u->flags;
+	mode->type        = 0; /* set by caller as needed (DRIVER/PREFERRED etc.) */
+
+	/* Generate name like "1920x1080" */
+	drm_mode_set_name(mode);
+
+	/*
+	 * Populate derived CRTC info. Choose flags appropriate for your flow:
+	 * - 0 (no special handling), or
+	 * - CRTC_INTERLACE_HALVE_V if you expect halved vdisplay on interlace.
+	 */
+	drm_mode_set_crtcinfo(mode, 0);
+
+	return 0;
+}
 
 /* Serialization lock for sde_wb_list */
 static DEFINE_MUTEX(sde_wb_list_lock);
@@ -134,7 +176,7 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 				SDE_ERROR("failed to create mode\n");
 				break;
 			}
-			ret = drm_mode_convert_umode(wb_dev->drm_dev, mode,
+			ret = sde_convert_umode(wb_dev->drm_dev, mode,
 					&wb_dev->modes[i]);
 			if (ret) {
 				SDE_ERROR("failed to convert mode %d\n", ret);
@@ -253,7 +295,7 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 			struct drm_display_mode dispmode;
 
 			memset(&dispmode, 0, sizeof(dispmode));
-			ret = drm_mode_convert_umode(wb_dev->drm_dev,
+			ret = sde_convert_umode(wb_dev->drm_dev,
 					&dispmode, &modeinfo[i]);
 			/* null terminate the string */
 			modeinfo[i].name[DRM_DISPLAY_MODE_LEN - 1] = '\0';
@@ -1102,7 +1144,7 @@ static int sde_wb_probe(struct platform_device *pdev)
  * sde_wb_remove - unload writeback module
  * @pdev:	Pointer to platform device
  */
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void sde_wb_remove(struct platform_device *pdev)
 #else
 static int sde_wb_remove(struct platform_device *pdev)
@@ -1138,7 +1180,7 @@ static int sde_wb_remove(struct platform_device *pdev)
 	devm_kfree(&pdev->dev, wb_dev);
 
 end:
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return rc;
 #else
 	return;

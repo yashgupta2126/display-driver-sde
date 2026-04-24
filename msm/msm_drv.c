@@ -120,16 +120,20 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
 static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 {
 	int ret = 0;
-	struct sched_param param = { 0 };
 	struct task_struct *task = current->group_leader;
+	struct sched_attr attr = {
+		.size = sizeof(attr),
+		.sched_policy = SCHED_FIFO,
+		.sched_priority = 1,
+	};
 
 	/**
 	 * this priority was found during empiric testing to have appropriate
 	 * realtime scheduling to process display updates and interact with
 	 * other real time and normal priority task
 	 */
-	param.sched_priority = 16;
-	ret = sched_setscheduler(task, SCHED_FIFO, &param);
+
+	ret = sched_setattr_nocheck(task, &attr);
 	if (ret)
 		pr_warn("pid:%d name:%s priority update failed: %d\n",
 			current->tgid, task->comm, ret);
@@ -151,7 +155,7 @@ static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
  * RETURNS
  * Zero for success or -errorno.
  */
-int msm_atomic_check(struct drm_device *dev,
+static int msm_atomic_check(struct drm_device *dev,
 			    struct drm_atomic_state *state)
 {
 	struct msm_drm_private *priv;
@@ -619,7 +623,7 @@ static int get_mdp_ver(struct platform_device *pdev)
  * Return: 1 if an IOMMU is mapped for the device (stops iteration),
  * 0 otherwise (continues iteration).
  */
-int msm_check_device_iommu_mapped(struct device *dev, void *data)
+static int msm_check_device_iommu_mapped(struct device *dev, void *data)
 {
 	if (!dev || !data) {
 		pr_err("msm check device iommu_mapped invalid input [%s] is null\n",
@@ -860,12 +864,6 @@ static struct msm_kms *_msm_drm_component_init_helper(
 	struct msm_kms *kms;
 
 	switch (get_mdp_ver(pdev)) {
-	case KMS_MDP4:
-		kms = mdp4_kms_init(ddev);
-		break;
-	case KMS_MDP5:
-		kms = mdp5_kms_init(ddev);
-		break;
 	case KMS_SDE:
 	case KMS_SDE_HFI:
 		kms = sde_kms_init(ddev);
@@ -931,9 +929,11 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	ddev->dev_private = priv;
 	priv->dev = ddev;
 
+#if CONFIG_MDSS_HFI
 	ret = hfi_msm_drv_init(ddev);
 	if (ret)
 		goto hfi_alloc_fail;
+#endif
 
 	if (get_mdp_ver(pdev) == KMS_SDE_HFI)
 		priv->disp_op = MSM_DISP_OP_HFI;
@@ -1290,7 +1290,11 @@ static void msm_lastclose(struct drm_device *dev)
 	msm_atomic_flush_display_threads(priv);
 
 	if (priv->fbdev) {
+#if (KERNEL_VERSION(6, 19, 0) > LINUX_VERSION_CODE)
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
+#else
+		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev, false);
+#endif
 		if (rc)
 			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
 #if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
@@ -1323,12 +1327,14 @@ static void msm_postclose(struct drm_device *dev, struct drm_file *file)
 
 	if (kms->funcs && kms->funcs->postclose)
 		kms->funcs->postclose(kms, file);
-
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_lock(&dev->struct_mutex);
+#endif
 	if (ctx == priv->lastctx)
 		priv->lastctx = NULL;
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&dev->struct_mutex);
-
+#endif
 	mutex_lock(&ctx->power_lock);
 	if (ctx->enable_refcnt) {
 		SDE_EVT32(ctx->enable_refcnt);
@@ -1424,11 +1430,11 @@ static int msm_ioctl_gem_madvise(struct drm_device *dev, void *data,
 	default:
 		return -EINVAL;
 	}
-
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
 		return ret;
-
+#endif
 	obj = drm_gem_object_lookup(file, args->handle);
 	if (!obj) {
 		ret = -ENOENT;
@@ -1444,7 +1450,9 @@ static int msm_ioctl_gem_madvise(struct drm_device *dev, void *data,
 	drm_gem_object_put(obj);
 
 unlock:
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&dev->struct_mutex);
+#endif
 	return ret;
 }
 
@@ -1844,7 +1852,6 @@ int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(msm_ioctl_rmfb2);
 
 /**
  * msm_ioctl_power_ctrl - enable/disable power vote on MDSS Hw
@@ -1853,7 +1860,7 @@ EXPORT_SYMBOL_GPL(msm_ioctl_rmfb2);
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
+static int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct msm_file_private *ctx = file_priv->driver_priv;
@@ -1927,7 +1934,7 @@ int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
+static int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct drm_msm_display_hint *display_hint = data;
@@ -1979,7 +1986,7 @@ int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_display_early_ept(struct drm_device *dev, void *data,
+static int msm_ioctl_display_early_ept(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct drm_msm_display_early_ept *early_ept = data;
@@ -2028,7 +2035,7 @@ static const struct file_operations fops = {
 	.owner              = THIS_MODULE,
 	.open               = drm_open,
 	.release            = msm_release,
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 	.fop_flags          = FOP_UNSIGNED_OFFSET,
 #endif
 	.unlocked_ioctl     = drm_ioctl,
@@ -2078,7 +2085,7 @@ static struct drm_driver msm_driver = {
 	.ioctls             = msm_ioctls,
 	.num_ioctls         = ARRAY_SIZE(msm_ioctls),
 	.fops               = &fops,
-	.name               = "msm_drm",
+	.name               = "msm-kms",
 	.desc               = "MSM Snapdragon DRM",
 #if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	.date               = "20130625",
@@ -2257,15 +2264,12 @@ static int add_components_mdp(struct device *mdp_dev,
 
 #if (KERNEL_VERSION(6, 14, 0) > LINUX_VERSION_CODE)
 static int compare_name_mdp(struct device *dev, void *data)
-{
-	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
-}
 #else
 static int compare_name_mdp(struct device *dev, const void *data)
+#endif
 {
 	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
 }
-#endif
 
 static int add_display_components(struct device *dev,
 				  struct component_match **matchptr)
@@ -2556,7 +2560,7 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	return component_master_add_with_match(&pdev->dev, &msm_drm_ops, match);
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void msm_pdev_remove(struct platform_device *pdev)
 #else
 static int msm_pdev_remove(struct platform_device *pdev)
@@ -2565,7 +2569,7 @@ static int msm_pdev_remove(struct platform_device *pdev)
 	component_master_del(&pdev->dev, &msm_drm_ops);
 	of_platform_depopulate(&pdev->dev);
 
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return 0;
 #endif
 }

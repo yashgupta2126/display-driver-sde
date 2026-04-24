@@ -10,6 +10,8 @@
 #include "hfi_adapter.h"
 #include "hfi_utils.h"
 
+#define HFI_ERROR 1
+
 /**
  * struct hfi_connector - local sde connector hfi structure
  * @sde_base: Pointer to base sde connector structure
@@ -64,17 +66,15 @@ void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
  */
 int hfi_conn_send_panel_init(struct drm_connector *drm_conn);
 #else
-int hfi_connector_init(int connector_type, struct sde_connector *c_conn);
-{
-	return -HFI_ERROR;
-}
-
+struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
+		u32 cmd_buf_type);
 struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
 		u32 cmd_buf_type)
 {
 	return NULL;
 }
 
+int hfi_conn_send_panel_init(struct drm_connector *drm_conn);
 int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
 {
 	return 0;

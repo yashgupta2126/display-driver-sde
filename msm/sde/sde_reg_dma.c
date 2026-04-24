@@ -48,13 +48,13 @@ static int default_reset(struct sde_hw_ctl *ctl)
 	return -EINVAL;
 }
 
-struct sde_reg_dma_buffer *default_alloc_reg_dma_buf(u32 size, u32 dpu_idx)
+static struct sde_reg_dma_buffer *default_alloc_reg_dma_buf(u32 size, u32 dpu_idx)
 {
 	DRM_ERROR("not implemented\n");
 	return ERR_PTR(-EINVAL);
 }
 
-int default_dealloc_reg_dma(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx)
+static int default_dealloc_reg_dma(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx)
 {
 	DRM_ERROR("not implemented\n");
 	return -EINVAL;
@@ -84,7 +84,7 @@ static void default_dump_reg(u32 dpu_idx)
 
 static void set_default_dma_ops(struct sde_hw_reg_dma *reg_dma)
 {
-	const static struct sde_hw_reg_dma_ops ops = {
+	static const struct sde_hw_reg_dma_ops ops = {
 		default_check_support, default_setup_payload,
 		{default_kick_off, default_kick_off}, default_reset, default_alloc_reg_dma_buf,
 		default_dealloc_reg_dma, default_buf_reset_reg_dma,

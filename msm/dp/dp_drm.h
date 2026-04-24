@@ -24,7 +24,6 @@ struct dp_bridge {
 	void *dp_panel;
 };
 
-
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
 /**
  * dp_connector_config_hdr - callback to configure HDR

@@ -2679,7 +2679,11 @@ static int _sde_encoder_phys_wb_init_internal_fb(struct sde_encoder_phys_wb *wb_
 	}
 
 	/* allocate gem tracking object */
+#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE)
+	info = drm_get_format_info(dev, mode_cmd.pixel_format, mode_cmd.modifier);
+#else
 	info = drm_get_format_info(dev, &mode_cmd);
+#endif
 	nplanes = info->num_planes;
 	if (nplanes >= SDE_MAX_PLANES) {
 		SDE_ERROR("[enc:%d wb:%d] requested format has too many planes:%d\n",
@@ -2961,14 +2965,14 @@ static void sde_encoder_phys_wb_destroy(struct sde_encoder_phys *phys_enc)
 	kfree(wb_enc);
 }
 
-void sde_encoder_phys_wb_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
+static void sde_encoder_phys_wb_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
 
 	sde_mini_dump_add_va_region("sde_enc_phys_wb", sizeof(*wb_enc), wb_enc);
 }
 
-void sde_encoder_phys_wb_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
+static void sde_encoder_phys_wb_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
 {
 	cfg->enable = true;

@@ -5,7 +5,7 @@
 
 #include <linux/of_platform.h>
 #include <linux/version.h>
-#include <msm_ext_display.h>
+#include <linux/soc/qcom/msm_ext_display.h>
 #include <linux/gcd.h>
 
 #include "hdmi_audio.h"

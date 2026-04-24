@@ -93,6 +93,11 @@ ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_AR
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen3dispconf.h
 endif
 
+ifeq ($(CONFIG_ARCH_QCOM), y)
+       include $(DISPLAY_ROOT)/config/qcomdisp.mk
+       LINUX_INC += -include $(DISPLAY_ROOT)/config/qcomdispconf.h
+endif
+
 ifeq ($(ENABLE_BUILD_PATH), y)
 	LINUX_INC += $(LE_EXTRA_CFLAGS)
 endif
@@ -145,8 +150,8 @@ ifeq ($(call cc-option-yn, -Wheader-guard),y)
 EXTRA_CFLAGS += -Wheader-guard
 endif
 
-ccflags-y += -Wformat-extra-args -Wstrict-prototypes -Wformat-insufficient-args \
-		-Wformat-invalid-specifier -Wformat-zero-length -Wnonnull
+ccflags-y +=  -Wno-attribute-warning -Wno-maybe-uninitialized -Wno-int-conversion \
+		-Wno-sequence-point -Wnonnull -Wno-unused -Wno-format -Wno-implicit-function-declaration
 
 ifneq ($(MODNAME), qdsp6v2)
 CHIP_NAME ?= $(MODNAME)
@@ -348,10 +353,12 @@ msm_drm-$(CONFIG_DRM_MSM_HDMI) += hdmi/hdmi_audio.o \
 				hdmi/hdmi_drm.o \
 				hdmi/hdmi_hdcp2p2.o \
 				hdmi/hdmi_panel.o \
+				hdmi/hdmi_parser.o \
 				hdmi/hdmi_phy.o \
 				hdmi/hdmi_phy_snps.o \
 				hdmi/hdmi_pll.o \
 				hdmi/hdmi_pll_snps.o \
+				hdmi/hdmi_power.o \
 				hdmi/hdmi_util.o
 
 msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \

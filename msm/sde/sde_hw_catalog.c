@@ -11,7 +11,11 @@
 #include <linux/platform_device.h>
 #include <linux/soc/qcom/llcc-qcom.h>
 #include <linux/pm_qos.h>
+#if __has_include(<soc/qcom/of_common.h>)
 #include <soc/qcom/of_common.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #include <soc/qcom/socinfo.h>
 
 #include "sde_hw_mdss.h"
@@ -7039,6 +7043,7 @@ static int sde_hw_check_qultivate_fuse(struct drm_device *dev, struct sde_mdss_c
 		return 0;
 	}
 
+#if __has_include(<soc/qcom/socinfo,h>)
 	if (!socinfo_get_part_info(PART_DISPLAY)) {
 		disp_part_count = socinfo_get_part_count(PART_DISPLAY);
 
@@ -7050,6 +7055,7 @@ static int sde_hw_check_qultivate_fuse(struct drm_device *dev, struct sde_mdss_c
 			socinfo_get_subpart_info(PART_DISPLAY, part_info, disp_part_count);
 		}
 	}
+#endif
 
 	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1) {
 		config_v1 = kzalloc(sizeof(struct sde_qultivate_config_v1), GFP_KERNEL);

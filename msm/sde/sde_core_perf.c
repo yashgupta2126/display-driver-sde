@@ -13,7 +13,11 @@
 #include <linux/clk.h>
 #include <linux/bitmap.h>
 #include <linux/sde_rsc.h>
+#if __has_include(<soc/qcom/crm.h>)
 #include <soc/qcom/crm.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 
 #include "msm_prop.h"
 
@@ -386,7 +390,9 @@ void sde_core_perf_llcc_stale_configure(struct sde_mdss_cfg *sde_cfg, struct llc
 	if (!sde_cfg || !slice || !test_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features))
 		return;
 
+	#if __has_include(<linux/soc/qcom/llcc-qcom.h>)
 	llcc_configure_staling_mode(slice, &params);
+	#endif
 }
 
 void sde_core_perf_llcc_stale_frame(struct drm_crtc *crtc, enum sde_sys_cache_type type)
@@ -408,7 +414,9 @@ void sde_core_perf_llcc_stale_frame(struct drm_crtc *crtc, enum sde_sys_cache_ty
 			!kms->perf.llcc_active[type])
 		return;
 
+	#if __has_include(<linux/soc/qcom/llcc-qcom.h>)
 	llcc_notif_staling_inc_counter(kms->catalog->sc_cfg[type].slice);
+	#endif
 }
 #else
 void sde_core_perf_llcc_stale_configure(struct sde_mdss_cfg *sde_cfg, struct llcc_slice_desc *slice)

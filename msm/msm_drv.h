@@ -56,6 +56,7 @@
 #endif
 #include <drm/drm_bridge.h>
 #include <drm/drm_framebuffer.h>
+#include <drm/drm_print.h>
 
 #include "sde_power_handle.h"
 
@@ -1590,14 +1591,21 @@ struct drm_framebuffer *msm_framebuffer_init(struct drm_device *dev,
 		const struct drm_mode_fb_cmd2 *mode_cmd,
 		struct drm_gem_object **bos);
 struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
-		struct drm_file *file, const struct drm_mode_fb_cmd2 *mode_cmd);
+		struct drm_file *file,
+		const struct drm_format_info *dummy_info,
+		const struct drm_mode_fb_cmd2 *mode_cmd);
 int msm_framebuffer_set_cache_hint(struct drm_framebuffer *fb,
 		u32 flags, u32 rd_type, u32 wr_type);
 int msm_framebuffer_get_cache_hint(struct drm_framebuffer *fb,
 		u32 *flags, u32 *rd_type, u32 *wr_type);
 
-struct drm_fb_helper *msm_fbdev_init(struct drm_device *dev);
-void msm_fbdev_free(struct drm_device *dev);
+static inline struct drm_fb_helper *msm_fbdev_init(struct drm_device *dev)
+{
+	return NULL;
+}
+static inline void msm_fbdev_free(struct drm_device *dev)
+{
+}
 
 struct hdmi;
 #if IS_ENABLED(CONFIG_DRM_MSM_HDMI)
@@ -1938,4 +1946,20 @@ bool msm_iommu_present_on_bus(const struct bus_type *bus);
  * Return: true if the IOMMU is present, false otherwise.
  */
 bool mdss_iommu_present(struct drm_device *dev);
+
+/**
+ * msm_ioctl_rmfb2 - remove an FB from the configuration
+ * @dev: drm device for the ioctl
+ * @data: data pointer for the ioctl
+ * @file_priv: drm file for the ioctl call
+ *
+ * Remove the FB specified by the user.
+ *
+ * Called by the user via ioctl.
+ *
+ * Returns:
+ * Zero on success, negative errno on failure.
+ **/
+int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
+				    struct drm_file *file_priv);
 #endif /* __MSM_DRV_H__ */

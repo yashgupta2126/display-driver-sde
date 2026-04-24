@@ -24,14 +24,21 @@
 #include <linux/module.h>
 
 #include <drm/drm_drv.h>
-
+#if __has_include(<linux/qcom-dma-mapping.h>) && \
+	__has_include(<linux/mem-buf.h>) && \
+	__has_include(<soc/qcom/secure_buffer.h>)
 #include <linux/qcom-dma-mapping.h>
-#include <linux/dma-buf.h>
-#include <linux/version.h>
 #include <linux/mem-buf.h>
 #include <soc/qcom/secure_buffer.h>
+#else
+#include "qcom_display_internal.h"
+#endif
+#include <linux/dma-buf.h>
+#include <linux/version.h>
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+#if __has_include(<linux/qti-smmu-proxy-callbacks.h>)
 #include <linux/qti-smmu-proxy-callbacks.h>
+#endif
 #elif (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
@@ -122,11 +129,13 @@ static int msm_gem_prime_get_vmid_flags(struct dma_buf *dma_buf, struct msm_kms 
 	int *vmid_list, *perms_list;
 	int nelems = 0, ret = 0, i;
 
+#if __has_include(<linux/mem-buf.h>)
 	ret = mem_buf_dma_buf_copy_vmperm(dma_buf, &vmid_list, &perms_list, &nelems);
 	if (ret) {
 		DRM_ERROR("get vmid list failure, ret:%d", ret);
 		return ret;
 	}
+#endif
 
 	for (i = 0; i < nelems; i++) {
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
@@ -153,8 +162,10 @@ static int msm_gem_prime_get_vmid_flags(struct dma_buf *dma_buf, struct msm_kms 
 	}
 
 	/* mem_buf_dma_buf_copy_vmperm uses kmemdup, do kfree to free up the memory */
+#if __has_include(<linux/mem-buf.h>)
 	kfree(vmid_list);
 	kfree(perms_list);
+#endif
 
 	return ret;
 }
@@ -250,6 +261,7 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 		return ERR_CAST(attach);
 	}
 
+#if __has_include(<linux/mem-buf.h>)
 	/*
 	 * For cached buffers where CPU access is required, dma_map_attachment
 	 * must be called now to allow user-space to perform cpu sync begin/end
@@ -259,6 +271,7 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 		attach->dma_map_attrs |= DMA_ATTR_DELAYED_UNMAP;
 
 	attach->dma_map_attrs |= dma_map_attrs;
+#endif
 
 	/*
 	 * avoid map_attachment for S2-only buffers and TVM buffers as it needs to be mapped

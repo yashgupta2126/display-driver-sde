@@ -9,8 +9,14 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/kthread.h>
+
+#if __has_include(<linux/soc/qcom/altmode-glink.h>) && \
+	__has_include(<linux/usb/dwc3-msm.h>)
 #include <linux/soc/qcom/altmode-glink.h>
 #include <linux/usb/dwc3-msm.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #include <linux/usb/pd_vdo.h>
 #include <linux/of_platform.h>
 

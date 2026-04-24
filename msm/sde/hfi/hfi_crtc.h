@@ -10,6 +10,7 @@
 #include "sde_crtc.h"
 #include "hfi_utils.h"
 #include "hfi_adapter.h"
+#include "hfi_pack_unpack_common.h"
 
 /**
  * struct hfi_crtc - virtualized hfi CRTC data structure
@@ -82,24 +83,30 @@ int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc);
 int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc);
 
 #else
+int hfi_crtc_init(struct sde_crtc *sde_crtc);
 int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
 	return -HFI_ERROR;
 }
 
+u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
 u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
 {
 	return U32_MAX;
 }
 
+void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask);
 void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
 {
 }
+
+int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc);
 int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc)
 {
 	return 0;
 }
 
+int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc);
 int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc)
 {
 	return 0;

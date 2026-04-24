@@ -20,12 +20,19 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/pm_runtime.h>
+
+#if __has_include(<linux/qcom-dma-mapping.h>) && \
+	__has_include(<linux/msm_dma_iommu_mapping.h>) && \
+	__has_include(<linux/qcom-iommu-util.h>) && \
+	__has_include(<soc/qcom/secure_buffer.h>)
 #include <linux/qcom-dma-mapping.h>
 #include <linux/msm_dma_iommu_mapping.h>
-#include <linux/dma-mapping.h>
 #include <linux/qcom-iommu-util.h>
-
 #include <soc/qcom/secure_buffer.h>
+#else
+#include "qcom_display_internal.h"
+#endif
+#include <linux/dma-mapping.h>
 
 #include "msm_drv.h"
 #include "msm_gem.h"
@@ -85,11 +92,13 @@ static int msm_smmu_attach(struct msm_mmu *mmu, const char * const *names,
 		dev_dbg(client->dev, "iommu domain ops restored\n");
 	}
 
+#if __has_include(<linux/qcom-iommu-util.h>)
 	rc = qcom_iommu_sid_switch(client->dev, SID_ACQUIRE);
 	if (rc) {
 		DISP_DEV_ERR(client->dev, "iommu sid switch failed (%d)\n", rc);
 		return rc;
 	}
+#endif
 
 	client->domain_attached = true;
 
@@ -114,10 +123,15 @@ static void msm_smmu_detach(struct msm_mmu *mmu, const char * const *names,
 		return;
 
 	pm_runtime_get_sync(mmu->dev);
+
+#if __has_include(<linux/msm_dma_iommu_mapping.h>)
 	msm_dma_unmap_all_for_dev(client->dev);
+#endif
+#if __has_include(<linux/qcom-iommu-util.h>)
 	rc = qcom_iommu_sid_switch(client->dev, SID_RELEASE);
 	if (rc)
 		DRM_ERROR("iommu sid switch failed (%d)\n", rc);
+#endif
 
 	client->dma_ops = get_dma_ops(client->dev);
 	if (client->dma_ops) {
@@ -141,9 +155,11 @@ static int msm_enable_smmu_translations(struct msm_mmu *mmu)
 	if (!client || !client->domain)
 		return -ENODEV;
 
+#if __has_include(<linux/qcom-iommu-util.h>)
 	ret = qcom_iommu_enable_s1_translation(client->domain);
 	if (ret)
 		DRM_ERROR("enable iommu s1 translations failed:%d\n", ret);
+#endif
 
 	return ret;
 }
@@ -259,7 +275,7 @@ static void msm_smmu_destroy(struct msm_mmu *mmu)
 	kfree(smmu);
 }
 
-struct device *msm_smmu_get_dev(struct msm_mmu *mmu)
+static struct device *msm_smmu_get_dev(struct msm_mmu *mmu)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
 
@@ -606,7 +622,7 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	return ret;
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void msm_smmu_remove(struct platform_device *pdev)
 #else
 static int msm_smmu_remove(struct platform_device *pdev)
@@ -627,7 +643,7 @@ static int msm_smmu_remove(struct platform_device *pdev)
 	}
 	mutex_unlock(&smmu_list_lock);
 
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return 0;
 #endif
 }

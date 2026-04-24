@@ -12,6 +12,7 @@
 #include "hfi_utils.h"
 
 #define to_hfi_encoder(x) x->hfi_encoder
+#define HFI_ERROR 1
 
 struct hw_event_state {
 	u32 state;
@@ -56,6 +57,7 @@ struct hfi_encoder {
  */
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc);
 #else
+int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc);
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
 {
 	return -HFI_ERROR;

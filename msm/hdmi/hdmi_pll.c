@@ -202,7 +202,7 @@ error:
 	return rc;
 }
 
-#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void hdmi_pll_driver_remove(struct platform_device *pdev)
 #else
 static int hdmi_pll_driver_remove(struct platform_device *pdev)
@@ -223,7 +223,7 @@ static int hdmi_pll_driver_remove(struct platform_device *pdev)
 	kfree(pll);
 	platform_set_drvdata(pdev, NULL);
 end:
-#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return rc;
 #else
 	return;

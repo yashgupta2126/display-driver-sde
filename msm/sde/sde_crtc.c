@@ -27,7 +27,11 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_flip_work.h>
+#if __has_include(<soc/qcom/of_common.h>)
 #include <soc/qcom/of_common.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #include <linux/version.h>
 #ifdef CONFIG_QCOM_SPEC_SYNC
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
@@ -294,7 +298,7 @@ static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 	 * pipes staged on that LM.
 	 */
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
-		plane_state = drm_atomic_get_existing_plane_state(
+		plane_state = drm_atomic_get_new_plane_state(
 				crtc_state->state, plane);
 		if (!plane_state)
 			continue;
@@ -456,7 +460,7 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	}
 }
 
-int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
+static int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
 {
 	struct sde_crtc_state *cstate;
 	struct drm_plane *plane;
@@ -466,7 +470,7 @@ int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *c
 
 	cstate = to_sde_crtc_state(crtc_state);
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
-		plane_state = drm_atomic_get_existing_plane_state(
+		plane_state = drm_atomic_get_new_plane_state(
 				crtc_state->state, plane);
 		if (!plane_state)
 			continue;
@@ -483,7 +487,7 @@ int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *c
 	return layout_split;
 }
 
-bool sde_crtc_state_in_dpu_dma_mode(struct drm_crtc_state *c_state)
+static bool sde_crtc_state_in_dpu_dma_mode(struct drm_crtc_state *c_state)
 {
 	struct drm_connector *connector;
 	struct drm_encoder *encoder;
@@ -512,7 +516,7 @@ bool sde_crtc_state_in_dpu_dma_mode(struct drm_crtc_state *c_state)
 	return sde_conn->dpu_dma_enabled;
 }
 
-void sde_crtc_get_loopback_resolution(struct sde_crtc_state *cstate,
+static void sde_crtc_get_loopback_resolution(struct sde_crtc_state *cstate,
 			struct sde_crtc *sde_crtc, u32 *width, u32 *height)
 {
 	struct sde_hw_ds_cfg *cfg;
@@ -979,7 +983,7 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 	kfree(sde_crtc);
 }
 
-struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_crtc *crtc,
+static struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_crtc *crtc,
 		struct drm_atomic_state *state)
 {
 	struct drm_connector *conn;
@@ -3313,7 +3317,7 @@ static void _sde_crtc_frame_data_notify(struct drm_crtc *crtc,
 	sde_crtc->frame_data.idx = ++sde_crtc->frame_data.idx % sde_crtc->frame_data.cnt;
 }
 
-void sde_crtc_get_frame_data(struct drm_crtc *crtc)
+static void sde_crtc_get_frame_data(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
 	struct drm_plane *plane;
@@ -3667,7 +3671,7 @@ static void _sde_crtc_retire_event(struct drm_connector *connector,
 	SDE_ATRACE_END("signal_retire_fence");
 }
 
-void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
+static void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
 	uint32_t current_opr_value[MAX_DSI_DISPLAYS] = {0};
@@ -4557,7 +4561,7 @@ exit:
  *
  * return 0 if success non-zero otherwise
  */
-int sde_crtc_sw_fence_error_handle(struct drm_crtc *crtc, int err_status)
+static int sde_crtc_sw_fence_error_handle(struct drm_crtc *crtc, int err_status)
 {
 	struct sde_crtc *sde_crtc = NULL;
 	struct drm_encoder *drm_encoder;
@@ -7226,7 +7230,7 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		const struct msm_format *msm_fmt;
 		const struct sde_format *fmt;
 
-		plane_state = drm_atomic_get_existing_plane_state(
+		plane_state = drm_atomic_get_new_plane_state(
 				crtc_state->state, plane);
 		if (!plane_state)
 			continue;
@@ -9316,7 +9320,7 @@ void sde_crtc_static_img_control(struct drm_crtc *crtc,
 /*
  * __sde_crtc_static_cache_read_work - transition to cache read
  */
-void __sde_crtc_static_cache_read_work(struct kthread_work *work)
+static void __sde_crtc_static_cache_read_work(struct kthread_work *work)
 {
 	struct sde_crtc *sde_crtc = container_of(work, struct sde_crtc,
 			static_cache_read_work.work);

@@ -641,7 +641,7 @@ release_vreg:
 	return rc;
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 void sde_smmu_remove(struct platform_device *pdev)
 #else
 int sde_smmu_remove(struct platform_device *pdev)
@@ -667,7 +667,7 @@ int sde_smmu_remove(struct platform_device *pdev)
 		sde_smmu->mp.vreg_config = NULL;
 		sde_smmu->mp.num_vreg = 0;
 	}
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
         return 0;
 #endif
 }

@@ -558,7 +558,7 @@ fail:
 	return rc;
 }
 
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 static void dsi_phy_driver_remove(struct platform_device *pdev)
 #else
 static int dsi_phy_driver_remove(struct platform_device *pdev)
@@ -609,7 +609,7 @@ static int dsi_phy_driver_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 
 end:
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return rc;
 #else
 	return;

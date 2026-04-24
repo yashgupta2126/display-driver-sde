@@ -128,7 +128,7 @@ TRACE_EVENT(tracing_mark_write,
 	TP_fast_assign(
 			__entry->trace_type = trace_type;
 			__entry->pid = task ? task->tgid : 0;
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 			__assign_str(trace_name);
 #else
 			__assign_str(trace_name, name);
@@ -166,7 +166,7 @@ TRACE_EVENT(sde_evtlog,
 	),
 	TP_fast_assign(
 			__entry->pid = current->tgid;
-#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 			__assign_str(evtlog_tag);
 #else
 			__assign_str(evtlog_tag, tag);

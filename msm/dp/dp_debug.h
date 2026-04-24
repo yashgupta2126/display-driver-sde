@@ -13,7 +13,12 @@
 #include "dp_aux.h"
 #include "dp_display.h"
 #include "dp_pll.h"
+
+#if __has_include(<linux/ipc_logging.h>)
 #include <linux/ipc_logging.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 
 #define DP_IPC_LOG(fmt, ...) \
 	do {  \

@@ -8,8 +8,12 @@
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/regulator/consumer.h>
+#if __has_include(<linux/soc/qcom/spmi-pmic-arb.h>)
 #include <linux/soc/qcom/spmi-pmic-arb.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
+#else
+#include "qcom_display_internal.h"
+#endif
 #include <linux/delay.h>
 #include <linux/sde_io_util.h>
 #include <linux/sde_vm_event.h>
@@ -151,11 +155,13 @@ int msm_dss_get_gpio_io_mem(const int gpio_pin, struct list_head *mem_list)
 	if (!io_mem)
 		return -ENOMEM;
 
+	#if __has_include(<linux/pinctrl/qcom-pinctrl.h>)
 	gpio_pin_status = msm_gpio_get_pin_address(gpio_pin, &res);
 	if (!gpio_pin_status) {
 		rc = -ENODEV;
 		goto parse_fail;
 	}
+	#endif
 
 	io_mem->base = res.start;
 	io_mem->size = resource_size(&res);
@@ -177,7 +183,7 @@ int msm_dss_get_pmic_io_mem(struct platform_device *pdev,
 	struct list_head temp_head;
 	struct msm_io_mem_entry *io_mem;
 	struct resource *res = NULL;
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	struct property *prop;
 	const __be32 *cur;
 #endif
@@ -190,13 +196,15 @@ int msm_dss_get_pmic_io_mem(struct platform_device *pdev,
 	if (!res)
 		return -ENOMEM;
 
-#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address", prop, cur, val)
 #else
 	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address", val)
 #endif
 	{
+		#if __has_include(<soc/qcom/spmi-pmic-arb.h>)
 		rc = spmi_pmic_arb_map_address(&pdev->dev, val, res);
+		#endif
 		if (rc < 0) {
 			DEV_ERR("%pS - failed to map pmic address, rc:%d\n",
 						    __func__, rc);
@@ -618,7 +626,7 @@ int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
 		clk_array[i].mmrm.mmrm_cb_data = mmrm_cb_data;
 
 		desc.pvt_data = (void *)mmrm_cb_data;
-		desc.notifier_callback_fn = cb_fnc;
+		desc.notifier_callback_fn = (void *)cb_fnc;
 
 #if IS_ENABLED(CONFIG_MSM_MMRM)
 		clk_array[i].mmrm.mmrm_client = mmrm_client_register(&desc);
