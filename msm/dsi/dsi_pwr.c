@@ -408,7 +408,7 @@ int dsi_pwr_enable_regulator(struct dsi_regulator_info *regs, bool enable)
 {
 	int rc = 0;
 
-	if (regs->count == 0) {
+	if (!regs || regs->count == 0) {
 		DSI_DEBUG("No valid regulators to enable\n");
 		return 0;
 	}

@@ -3661,6 +3661,7 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 	struct clk *esync_clk_rcg;
 	struct clk *dsi_clk;
 	struct dsi_clk_link_set *pll = &display->clock_info.pll_clks;
+	const char *pll_clk_names[2];
 	char *dsi_clock_name;
 
 	if (!strcmp(display->display_type, "primary"))
@@ -3673,9 +3674,24 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 
 	num_clk = dsi_display_get_clocks_count(display, dsi_clock_name);
 
+	if (num_clk <= 0) {
+		if (!strcmp(display->display_type, "primary")) {
+			pll_clk_names[0] = "pll_byte_clk0";
+			pll_clk_names[1] = "pll_dsi_clk0";
+		} else {
+			pll_clk_names[0] = "pll_byte_clk1";
+			pll_clk_names[1] = "pll_dsi_clk1";
+		}
+		num_clk = ARRAY_SIZE(pll_clk_names);
+		DSI_DEBUG("DT clocks not found ,using fallback parent PLL\n");
+	} else {
+		for (i = 0; i < num_clk; i++)
+			dsi_display_get_clock_name(display, dsi_clock_name, i,
+						   &pll_clk_names[i]);
+	}
+
 	for (i = 0; i < num_clk; i++) {
-		dsi_display_get_clock_name(display, dsi_clock_name, i,
-						&clk_name);
+		clk_name = pll_clk_names[i];
 
 		DSI_DEBUG("clock name:%s\n", clk_name);
 
@@ -4303,6 +4319,21 @@ static int dsi_display_parse_dt(struct dsi_display *display)
 		dsi_phy_name = "qcom,dsi-sec-phy-num";
 	}
 
+	/*TODO : support split display with drm panel/bridge */
+	if (!display->panel_node && display->has_drm_panel_or_bridge) {
+		struct dsi_display_ctrl *ctrl = &display->ctrl[0];
+
+		display->ctrl_count = 1;
+
+		ctrl->ctrl_of_node = of_parse_phandle(of_node, "qcom,dsi-ctrl", 0);
+		of_node_put(ctrl->ctrl_of_node);
+
+		ctrl->phy_of_node = of_parse_phandle(of_node, "qcom,dsi-phy", 0);
+		of_node_put(ctrl->phy_of_node);
+
+		goto skip_phandle_count;
+	}
+
 	display->ctrl_count = dsi_display_get_phandle_count(display,
 					dsi_ctrl_name);
 	phy_count = dsi_display_get_phandle_count(display, dsi_phy_name);
@@ -4338,6 +4369,8 @@ static int dsi_display_parse_dt(struct dsi_display *display)
 		of_node_put(ctrl->phy_of_node);
 	}
 
+skip_phandle_count:
+
 	/* Parse TE data */
 	dsi_display_parse_te_data(display);
 
@@ -4366,7 +4399,8 @@ static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 
 	if (!is_sim_panel(display)) {
 		if (!display->panel->host_config.ext_bridge_mode &&
-				!gpio_is_valid(display->panel->reset_config.reset_gpio)) {
+			!display->has_drm_panel_or_bridge &&
+			!gpio_is_valid(display->panel->reset_config.reset_gpio)) {
 			DSI_ERR("invalid reset gpio for the panel\n");
 			return false;
 		}
@@ -4443,11 +4477,13 @@ static int dsi_display_res_init(struct dsi_display *display)
 	}
 
 	display->panel = dsi_panel_get(&display->pdev->dev,
-				display->panel_node,
-				display->parser_node,
-				display->display_type,
-				display->cmdline_topology,
-				display->trusted_vm_env);
+					display->panel_node,
+					display->parser_node,
+					display->display_type,
+					display->cmdline_topology,
+					display->trusted_vm_env,
+					display->has_drm_panel_or_bridge);
+
 	if (IS_ERR_OR_NULL(display->panel)) {
 		rc = PTR_ERR(display->panel);
 		DSI_ERR("failed to get panel, rc=%d\n", rc);
@@ -4468,11 +4504,28 @@ static int dsi_display_res_init(struct dsi_display *display)
 		struct msm_dsi_phy *phy = display->ctrl[i].phy;
 		struct dsi_host_common_cfg *host = &display->panel->host_config;
 
-		phy->cfg.force_clk_lane_hs =
-			display->panel->host_config.force_hs_clk_lane;
-		phy->cfg.phy_type =
-			display->panel->host_config.phy_type;
+		/*
+		 * dsi_host_attach() derives force_hs_clk_lane from mode_flags and
+		 * stores it in panel->host_config.force_hs_clk_lane so it is
+		 * available here when the PHY is configured.
+		 */
+		if (!display->has_drm_panel_or_bridge) {
+			phy->cfg.force_clk_lane_hs =
+					display->panel->host_config.force_hs_clk_lane;
+		}
 
+		/*
+		 * TODO: Add a new downstream DSI PHY DT property (e.g.
+		 * "qcom,phy-type") and read it here so that platform overlays can
+		 * specify CPHY/DPHY independently of the panel node. For now,
+		 * hardcode to DPHY since nt37801 uses DPHY.
+		 */
+		if (display->has_drm_panel_or_bridge) {
+			phy->cfg.phy_type = DSI_PHY_TYPE_DPHY;
+		} else {
+			phy->cfg.phy_type =
+					display->panel->host_config.phy_type;
+		}
 		/*
 		 * Parse the dynamic clock trim codes for PLL, for video mode panels that have
 		 * dynamic clock property set.
@@ -5589,7 +5642,7 @@ static int _dsi_display_dev_init(struct dsi_display *display)
 		return -EINVAL;
 	}
 
-	if (!display->panel_node && !display->fw)
+	if (!display->panel_node && !display->fw && !display->has_drm_panel_or_bridge)
 		return 0;
 
 	mutex_lock(&display->display_lock);
@@ -6316,6 +6369,28 @@ static struct platform_driver dsi_display_driver = {
 	},
 };
 
+/**
+ * dsi_display_has_drm_panel_or_bridge - detect upstream DRM panel/bridge
+ * @display: dsi_display instance
+ * @node:    OF node of the DSI display controller
+ *
+ * Checks whether a remote device is connected to port@0 of the DSI
+ * controller node via the OF graph.
+ *
+ * Returns true if a remote endpoint is found, false otherwise.
+ */
+static bool dsi_display_has_drm_panel_or_bridge(struct dsi_display *display,
+					    struct device_node *node)
+{
+	struct device_node *remote = of_graph_get_remote_node(node, 0, 0);
+
+	if (!remote)
+		return false;
+
+	of_node_put(remote);
+	return true;
+}
+
 static int dsi_display_prepare_dt_parser(struct dsi_display *display)
 {
 	struct dsi_display_boot_param *boot_disp = display->boot_disp;
@@ -6327,6 +6402,14 @@ static int dsi_display_prepare_dt_parser(struct dsi_display *display)
 	char *display_name_firmware_sec  = "dsi_firmware_display_secondary";
 	bool prim = !strcmp(display->display_type, "primary");
 	int rc = 0;
+
+	if (dsi_display_has_drm_panel_or_bridge(display, node)) {
+		display->panel_node = NULL;
+		display->name = node->name;
+		display->has_drm_panel_or_bridge = true;
+		DSI_INFO("skipping DT panel lookup\n");
+		return 0;
+	}
 
 	if (boot_disp->boot_disp_en) {
 		if (!strcmp(boot_disp->name, "qcom,dsi_prop")) {
@@ -6406,7 +6489,7 @@ static int dsi_display_init(struct dsi_display *display)
 		if (rc) {
 			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
 					display->panel->name, rc);
-			return rc;
+			goto vreg_fail;
 		}
 	}
 
@@ -6427,11 +6510,27 @@ static int dsi_display_init(struct dsi_display *display)
 		display->panel->post_power_enable_status = true;
 	}
 
-	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
-		DSI_ERR("component add failed, rc=%d\n", rc);
+	/*
+	 *  In case of external drm panel/bridge, the component_add()
+	 *  will be called from dsi_host_attach() as part of devm_mipi_dsi_attach()
+	 *  from the external drm panel/bridge driver.
+	 */
+	if (!display->has_drm_panel_or_bridge) {
+		rc = component_add(&pdev->dev, &dsi_display_comp_ops);
+		if (rc){
+			DSI_ERR("component add failed, rc=%d\n", rc);
+			goto comp_add_fail;
+		}
+		DSI_DEBUG("component add success: %s\n", display->name);
+	}
 
-	DSI_DEBUG("component add success: %s\n", display->name);
+	return rc;
+comp_add_fail:
+	if (display->panel)
+		dsi_pwr_enable_regulator(&display->panel->power_info, false);
+vreg_fail:
+	_dsi_display_dev_deinit(display);
+
 end:
 	return rc;
 }

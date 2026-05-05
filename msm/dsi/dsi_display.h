@@ -276,6 +276,8 @@ struct dsi_display {
 	struct dsi_display_ext_bridge ext_bridge[MAX_DSI_CTRLS_PER_DISPLAY];
 	u32 ext_bridge_cnt;
 
+	bool has_drm_panel_or_bridge;
+
 	struct dsi_display_mode *modes;
 
 	enum dsi_display_type type;

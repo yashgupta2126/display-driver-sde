@@ -4494,12 +4494,55 @@ static void dsi_panel_setup_vm_ops(struct dsi_panel *panel, bool trusted_vm_env)
 	}
 }
 
+/**
+ * dsi_panel_initialize_stub - initialize a minimal DSI panel stub
+ * @panel:         pre-allocated, kzalloc-zeroed dsi_panel
+ * @parent:        parent device (DSI host)
+ * @type:          display type string (e.g. "primary")
+ * @trusted_vm_env: whether we are running in a trusted VM environment
+ *
+ * Returns the initialized panel pointer.
+ */
+static struct dsi_panel *dsi_panel_initialize_stub(struct dsi_panel *panel,
+						   struct device *parent,
+						   const char *type,
+						   bool trusted_vm_env)
+{
+	dsi_panel_setup_vm_ops(panel, trusted_vm_env);
+
+	panel->parent      = parent;
+	panel->type        = type;
+	panel->name        = "panel-stub";
+	panel->power_mode  = SDE_MODE_DPMS_OFF;
+	panel->panel_type  = DSI_DISPLAY_PANEL_TYPE_OLED;
+
+	panel->bl_config.bl_scale    = MAX_BL_SCALE_LEVEL;
+	panel->bl_config.bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
+
+	panel->host_config.mdp_cmd_trigger = DSI_TRIGGER_SW;
+	panel->host_config.dma_cmd_trigger = DSI_TRIGGER_SW;
+	panel->host_config.te_mode         = 1;
+
+	panel->cmd_config.wr_mem_start       = 0x2C;
+	panel->cmd_config.wr_mem_continue    = 0x3C;
+	panel->cmd_config.insert_dcs_command = true;
+
+	panel->esync_caps.emsync_switch_enabled = false;
+
+	dsi_panel_update_util(panel, NULL);
+
+	mutex_init(&panel->panel_lock);
+
+	return panel;
+}
+
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
 				struct device_node *parser_node,
 				const char *type,
 				int topology_override,
-				bool trusted_vm_env)
+				bool trusted_vm_env,
+				bool has_drm_panel_or_bridge)
 {
 	struct dsi_panel *panel;
 	struct dsi_parser_utils *utils;
@@ -4509,6 +4552,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
 		return ERR_PTR(-ENOMEM);
+
+	if (has_drm_panel_or_bridge)
+		return dsi_panel_initialize_stub(panel, parent, type, trusted_vm_env);
 
 	dsi_panel_setup_vm_ops(panel, trusted_vm_env);
 
