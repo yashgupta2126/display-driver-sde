@@ -3471,20 +3471,95 @@ static const struct component_ops dsi_display_comp_ops = {
 	.unbind = dsi_display_unbind,
 };
 
+/**
+ * dsi_panel_update_from_mipi_dsi_device - Populate dsi_panel stub from the
+ *                                          mipi_dsi_device config.
+ *
+ * @panel: stub panel created by dsi_panel_get() with has_drm_panel_or_bridge
+ * @dsi:   mipi_dsi_device populated by the panel driver in probe()
+ */
+static int dsi_panel_update_from_mipi_dsi_device(struct dsi_panel *panel,
+						   const struct mipi_dsi_device *dsi)
+{
+	if (!panel || !dsi) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	struct dsi_host_common_cfg *host = &panel->host_config;
+
+	/* store upstream config fields into panel->mipi_device */
+	panel->mipi_device.lanes      = dsi->lanes;
+	panel->mipi_device.format     = dsi->format;
+	panel->mipi_device.mode_flags = dsi->mode_flags;
+	panel->mipi_device.dsc        = dsi->dsc;
+	panel->mipi_device.host       = dsi->host;
+
+	DSI_INFO("[%s] applying mipi_dsi_device config "
+		 "lanes=%d format=%d mode_flags=0x%lx\n",
+		 panel->name, dsi->lanes, dsi->format, dsi->mode_flags);
+
+	/* data lanes */
+	host->data_lanes = 0;
+	if (dsi->lanes > 0)
+		host->data_lanes |= DSI_DATA_LANE_0;
+	if (dsi->lanes > 1)
+		host->data_lanes |= DSI_DATA_LANE_1;
+	if (dsi->lanes > 2)
+		host->data_lanes |= DSI_DATA_LANE_2;
+	if (dsi->lanes > 3)
+		host->data_lanes |= DSI_DATA_LANE_3;
+	host->num_data_lanes = dsi->lanes;
+
+	/* pixel format */
+	switch (dsi->format) {
+	case MIPI_DSI_FMT_RGB888:
+		host->dst_format = DSI_PIXEL_FORMAT_RGB888;
+		break;
+	case MIPI_DSI_FMT_RGB666:
+		host->dst_format = DSI_PIXEL_FORMAT_RGB666_LOOSE;
+		break;
+	case MIPI_DSI_FMT_RGB666_PACKED:
+		host->dst_format = DSI_PIXEL_FORMAT_RGB666;
+		break;
+	case MIPI_DSI_FMT_RGB565:
+	default:
+		host->dst_format = DSI_PIXEL_FORMAT_RGB565;
+		break;
+	}
+
+	/*
+	 * Panel mode: video if MIPI_DSI_MODE_VIDEO is set, otherwise cmd mode.
+	 */
+	if (dsi->mode_flags & MIPI_DSI_MODE_VIDEO)
+		panel->panel_mode = DSI_OP_VIDEO_MODE;
+	else
+		panel->panel_mode = DSI_OP_CMD_MODE;
+
+	/*
+	 * Clock lane HS: stay continuous unless MIPI_DSI_CLOCK_NON_CONTINUOUS
+	 * is set by the upstream driver.
+	 */
+	host->force_hs_clk_lane = !(dsi->mode_flags & MIPI_DSI_CLOCK_NON_CONTINUOUS);
+	return 0;
+}
+
 static int dsi_host_attach(struct mipi_dsi_host *host,
 			   struct mipi_dsi_device *dsi)
 {
-	int rc = 0;
-	struct dsi_display *display;
-	display = to_dsi_display(host);
-
+	struct dsi_display *display = to_dsi_display(host);
 	struct platform_device *pdev = display->pdev;
+	int rc = 0;
+
+	rc = dsi_panel_update_from_mipi_dsi_device(display->panel, dsi);
+	if (rc)
+		DSI_ERR("Invalid Params rc=%d\n", rc);
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
 	if (rc)
-		DSI_ERR("component add failed, rc=%d\n", rc);
+		DSI_ERR("component add failed rc=%d\n", rc);
 
-	DSI_DEBUG("component add success: %s\n", display->name);
+	DSI_DEBUG("component add success\n");
 	return 0;
 }
 
