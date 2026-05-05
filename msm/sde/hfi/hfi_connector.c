@@ -370,7 +370,8 @@ static int _hfi_conn_add_init_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
 
-	if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+	if (conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+	    conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
 		// Avoid populating noedid modes.
 		if (!list_empty(&drm_conn->modes))
 			num_modes = 1;
@@ -445,7 +446,8 @@ static int _hfi_conn_add_timing_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 	mutex_lock(&hfi_conn->hfi_lock);
 
 	list_for_each_entry(mode, &drm_conn->modes, head) {
-		if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL &&
+		if ((conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+		     conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
 			!(mode->type & DRM_MODE_TYPE_PREFERRED))
 			continue;
 		hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
@@ -510,7 +512,8 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 	 * If required, we could extend this to DSI
 	 */
 	c_conn = to_sde_connector(conn);
-	if (c_conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL)
+	if (c_conn->connector_type != DRM_MODE_CONNECTOR_WRITEBACK &&
+	    c_conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL)
 		return ret;
 
 	sde_kms = sde_connector_get_kms(conn);
@@ -565,7 +568,8 @@ static int hfi_connector_prepare_commit(struct drm_connector *conn,
 	}
 
 	sde_conn = to_sde_connector(conn);
-	if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+	if (sde_conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+	    sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
 		return hfi_wb_display_prepare_commit((struct sde_wb_device *) sde_conn->display,
 				cstate);
 

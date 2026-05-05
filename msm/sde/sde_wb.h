@@ -28,6 +28,7 @@
  * @max_mixer_width:    Max width supported by SDE LM HW block
  * @count_modes:	Length of writeback connector modes array
  * @modes:		Writeback connector modes array
+ * @writeback_pixel_formats_property Property which exposes supported pixel formats
  */
 struct sde_wb_device {
 	struct drm_device *drm_dev;
@@ -48,6 +49,7 @@ struct sde_wb_device {
 
 	u32 count_modes;
 	struct drm_mode_modeinfo *modes;
+	struct drm_property *writeback_pixel_formats_property;
 };
 
 /**
@@ -89,7 +91,9 @@ struct drm_framebuffer *sde_wb_get_output_fb(struct sde_wb_device *wb_dev);
  * @roi:	Pointer to region of interest
  * Returns:	0 if success; error code otherwise
  */
-int sde_wb_get_output_roi(struct sde_wb_device *wb_dev, struct sde_rect *roi);
+int sde_wb_get_output_roi(struct sde_wb_device *wb_dev,
+			  struct sde_rect *roi,
+			  const struct drm_display_mode *mode);
 
 /**
  * sde_wb_get_num_of_displays - get total number of writeback devices
@@ -246,7 +250,7 @@ static inline
 struct sde_wb_device *sde_wb_connector_get_wb(struct drm_connector *connector)
 {
 	if (!connector ||
-		(connector->connector_type != DRM_MODE_CONNECTOR_VIRTUAL)) {
+		(connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)) {
 		SDE_ERROR("invalid params\n");
 		return NULL;
 	}
@@ -269,7 +273,7 @@ sde_wb_connector_state_get_output_fb(struct drm_connector_state *state);
  * Returns:	0 if success; error code otherwise
  */
 int sde_wb_connector_state_get_output_roi(struct drm_connector_state *state,
-		struct sde_rect *roi);
+		struct sde_rect *roi, const struct drm_display_mode *mode);
 
 #else
 static inline
@@ -278,7 +282,9 @@ struct drm_framebuffer *sde_wb_get_output_fb(struct sde_wb_device *wb_dev)
 	return NULL;
 }
 static inline
-int sde_wb_get_output_roi(struct sde_wb_device *wb_dev, struct sde_rect *roi)
+int sde_wb_get_output_roi(struct sde_wb_device *wb_dev,
+			  struct sde_rect *roi,
+			  const struct drm_display_mode *mode)
 {
 	return 0;
 }
@@ -375,7 +381,7 @@ sde_wb_connector_state_get_output_fb(struct drm_connector_state *state)
 
 static inline
 int sde_wb_connector_state_get_output_roi(struct drm_connector_state *state,
-		struct sde_rect *roi)
+		struct sde_rect *roi, const struct drm_display_mode *mode)
 {
 	return 0;
 }

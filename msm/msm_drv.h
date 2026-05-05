@@ -238,13 +238,16 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DIMMING_BL_LUT,
 	CONNECTOR_PROP_DNSC_BLUR,
 	CONNECTOR_PROP_WB_CSC_CONFIG,
+	CONNECTOR_PROP_VIRTUAL_WB,
 
 	/* # of blob properties */
 	CONNECTOR_PROP_BLOBCOUNT,
 
 	/* range properties */
 	CONNECTOR_PROP_OUT_FB = CONNECTOR_PROP_BLOBCOUNT,
+	CONNECTOR_PROP_WB_OUT_FB,
 	CONNECTOR_PROP_RETIRE_FENCE,
+	CONNECTOR_PROP_WB_RETIRE_FENCE,
 	CONN_PROP_RETIRE_FENCE_OFFSET,
 	CONNECTOR_PROP_DST_X,
 	CONNECTOR_PROP_DST_Y,
@@ -1848,7 +1851,7 @@ static inline int align_pitch(int width, int bpp)
 {
 	int bytespp = (bpp + 7) / 8;
 	/* adreno needs pitch aligned to 32 pixels: */
-	return bytespp * ALIGN(width, 32);
+	return ALIGN(bytespp * width, 32);
 }
 
 /* for the generated headers: */

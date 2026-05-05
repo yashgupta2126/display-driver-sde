@@ -1150,7 +1150,8 @@ bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 		return false;
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
-	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL ||
+	if ((sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_WRITEBACK &&
+	     sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL) ||
 			sde_enc->crtc != crtc)
 		return false;
 
@@ -1178,7 +1179,8 @@ void sde_encoder_set_clone_mode(struct drm_encoder *drm_enc,
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	sde_crtc_state = to_sde_crtc_state(crtc_state);
 
-	if ((sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL) ||
+	if ((sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_WRITEBACK &&
+	     sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL) ||
 		(!(sde_crtc_state->cwb_enc_mask & drm_encoder_mask(drm_enc))))
 		return;
 
@@ -1640,7 +1642,8 @@ static void _sde_encoder_update_ppb_size(struct drm_encoder *drm_enc)
 	}
 
 	/* program only for realtime displays */
-	if (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL &&
+	if ((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+	     sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
 		!sde_encoder_is_loopback_display(drm_enc))
 		return;
 
@@ -3737,8 +3740,9 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	primary_loopback = sde_crtc_state->in_loopback_transition &&
 				!sde_encoder_is_loopback_display(drm_enc);
 
-	if (!((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
-			((sde_crtc_state->cached_cwb_enc_mask & drm_encoder_mask(drm_enc)))))
+	if (!((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+	       sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
+	      (sde_crtc_state->cached_cwb_enc_mask & drm_encoder_mask(drm_enc))))
 		sde_crtc_set_qos_dirty(drm_enc->crtc);
 
 	/* get and store the mode_info */
@@ -3776,8 +3780,9 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		msm_is_mode_seamless_emsync_fps_switch(msm_mode)))
 		sde_connector_set_vrr_params(sde_enc->cur_master->connector);
 
-	if ((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
-			((sde_crtc_state->cached_cwb_enc_mask & drm_encoder_mask(drm_enc)))) {
+	if ((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+	     sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
+			(sde_crtc_state->cached_cwb_enc_mask & drm_encoder_mask(drm_enc))) {
 		SDE_EVT32(DRMID(drm_enc), sde_crtc_state->cwb_enc_mask,
 				sde_crtc_state->cached_cwb_enc_mask);
 		sde_crtc_state->cwb_enc_mask = sde_crtc_state->cached_cwb_enc_mask;
@@ -8552,7 +8557,8 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		else
 			*drm_enc_mode = DRM_MODE_ENCODER_TMDS;
 		intf_type = INTF_DP;
-	} else if (disp_info->intf_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+	} else if (disp_info->intf_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+			disp_info->intf_type == DRM_MODE_CONNECTOR_VIRTUAL) {
 		*drm_enc_mode = DRM_MODE_ENCODER_VIRTUAL;
 		intf_type = is_lb_encoder ? INTF_LB : INTF_WB;
 	} else {

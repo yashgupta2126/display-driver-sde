@@ -208,7 +208,7 @@ sde_wb_connector_state_get_output_fb(struct drm_connector_state *state)
 {
 	if (!state || !state->connector ||
 		(state->connector->connector_type !=
-				DRM_MODE_CONNECTOR_VIRTUAL)) {
+				DRM_MODE_CONNECTOR_WRITEBACK)) {
 		SDE_ERROR("invalid params\n");
 		return NULL;
 	}
@@ -219,14 +219,20 @@ sde_wb_connector_state_get_output_fb(struct drm_connector_state *state)
 }
 
 int sde_wb_connector_state_get_output_roi(struct drm_connector_state *state,
-		struct sde_rect *roi)
+		struct sde_rect *roi, const struct drm_display_mode *primary_mode)
 {
+	struct sde_kms *sde_kms;
+
 	if (!state || !roi || !state->connector ||
 		(state->connector->connector_type !=
-				DRM_MODE_CONNECTOR_VIRTUAL)) {
+				DRM_MODE_CONNECTOR_WRITEBACK)) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
+
+	sde_kms = sde_connector_get_kms(state->connector);
+	if (!sde_kms)
+		return -EINVAL;
 
 	SDE_DEBUG("\n");
 
@@ -234,6 +240,13 @@ int sde_wb_connector_state_get_output_roi(struct drm_connector_state *state,
 	roi->y = sde_connector_get_property(state, CONNECTOR_PROP_DST_Y);
 	roi->w = sde_connector_get_property(state, CONNECTOR_PROP_DST_W);
 	roi->h = sde_connector_get_property(state, CONNECTOR_PROP_DST_H);
+
+	if (test_bit(SDE_FEATURE_VIRTUAL_CONNECTOR_WB, sde_kms->catalog->features)) {
+		roi->x = 0;
+		roi->y = 0;
+		roi->h = primary_mode->vdisplay;
+		roi->w = primary_mode->hdisplay;
+	}
 
 	return 0;
 }
@@ -257,7 +270,7 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 
 	if (!wb_dev || !wb_dev->connector ||
 			(wb_dev->connector->connector_type !=
-			 DRM_MODE_CONNECTOR_VIRTUAL)) {
+			 DRM_MODE_CONNECTOR_WRITEBACK)) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -465,6 +478,7 @@ int sde_wb_connector_set_property(struct drm_connector *connector,
 
 	switch (idx) {
 	case CONNECTOR_PROP_OUT_FB:
+	case CONNECTOR_PROP_WB_OUT_FB:
 		rc = _sde_wb_connector_set_out_fb(wb_dev, state);
 		break;
 	case CONNECTOR_PROP_DNSC_BLUR:
@@ -495,7 +509,7 @@ int sde_wb_get_info(struct drm_connector *connector,
 				wb_dev->wb_cfg->sblk->maxlinewidth_linear);
 
 	memset(info, 0, sizeof(struct msm_display_info));
-	info->intf_type = DRM_MODE_CONNECTOR_VIRTUAL;
+	info->intf_type = DRM_MODE_CONNECTOR_WRITEBACK;
 	info->num_of_h_tiles = 1;
 	info->h_tile_instance[0] = sde_wb_get_index(display);
 	info->is_connected = true;
@@ -709,6 +723,11 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	struct sde_mdss_cfg *catalog;
+	struct drm_property *prop;
+	struct drm_property_blob *blob;
+	const struct sde_format_extended *format_list;
+	u32 formats[64];
+	int n_formats = 0;
 	static const struct drm_prop_enum_list e_fb_translation_mode[] = {
 		{SDE_DRM_FB_NON_SEC, "non_sec"},
 		{SDE_DRM_FB_SEC, "sec"},
@@ -755,11 +774,34 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 			0x0, 0, e_cache_state, ARRAY_SIZE(e_cache_state),
 			0, CONNECTOR_PROP_CACHE_STATE);
 
+	if (test_bit(SDE_FEATURE_VIRTUAL_CONNECTOR_WB, sde_kms->catalog->features)) {
+		prop = drm_property_create(connector->dev, DRM_MODE_PROP_BLOB |
+				   DRM_MODE_PROP_ATOMIC |
+				   DRM_MODE_PROP_IMMUTABLE,
+				   "WRITEBACK_PIXEL_FORMATS", 0);
+		wb_dev->writeback_pixel_formats_property = prop;
+
+		format_list = wb_dev->wb_cfg->format_list;
+		n_formats = sde_populate_formats(format_list,
+						 formats,
+						 0,
+						 ARRAY_SIZE(formats));
+
+		blob = drm_property_create_blob(connector->dev, n_formats * sizeof(*formats),
+						formats);
+
+		drm_object_attach_property(&connector->base,
+					   wb_dev->writeback_pixel_formats_property,
+					   blob->base.id);
+	}
+
 	/*
 	 * Add extra connector properties
 	 */
 	msm_property_install_range(&c_conn->property_info, "FB_ID",
 			0x0, 0, ~0, 0, CONNECTOR_PROP_OUT_FB);
+	msm_property_install_range(&c_conn->property_info, "WRITEBACK_FB_ID",
+				   0x0, 0, ~0, 0, CONNECTOR_PROP_WB_OUT_FB);
 	msm_property_install_range(&c_conn->property_info, "DST_X",
 			0x0, 0, UINT_MAX, 0, CONNECTOR_PROP_DST_X);
 	msm_property_install_range(&c_conn->property_info, "DST_Y",
@@ -822,7 +864,9 @@ struct drm_framebuffer *sde_wb_get_output_fb(struct sde_wb_device *wb_dev)
 	return fb;
 }
 
-int sde_wb_get_output_roi(struct sde_wb_device *wb_dev, struct sde_rect *roi)
+int sde_wb_get_output_roi(struct sde_wb_device *wb_dev,
+			  struct sde_rect *roi,
+			  const struct drm_display_mode *mode)
 {
 	int rc;
 
@@ -835,7 +879,7 @@ int sde_wb_get_output_roi(struct sde_wb_device *wb_dev, struct sde_rect *roi)
 
 	mutex_lock(&wb_dev->wb_lock);
 	rc = sde_wb_connector_state_get_output_roi(
-			wb_dev->connector->state, roi);
+			wb_dev->connector->state, roi, mode);
 	mutex_unlock(&wb_dev->wb_lock);
 
 	return rc;

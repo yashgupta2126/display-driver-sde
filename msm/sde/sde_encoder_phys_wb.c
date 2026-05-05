@@ -1073,6 +1073,7 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 	u32  out_width = 0, out_height = 0, ds_tap_pt;
 	const struct sde_format *fmt;
 	int num_lm, prog_line, ret = 0;
+	const struct drm_display_mode *mode = &crtc_state->mode;
 
 	ds_tap_pt = sde_crtc_get_property(cstate, CRTC_PROP_CAPTURE_OUTPUT);
 	c_conn_state = to_sde_connector_state(conn_state);
@@ -1095,7 +1096,8 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 		return -EINVAL;
 	}
 
-	ret = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi);
+	ret = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi, mode);
+
 	if (ret) {
 		SDE_ERROR("failed to get roi %d\n", ret);
 		return ret;
@@ -1227,7 +1229,9 @@ static int _sde_encoder_phys_wb_validate_rotation(struct sde_encoder_phys *phys_
 		return -EINVAL;
 	}
 
-	ret = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi);
+	mode = &crtc_state->mode;
+	ret = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi, mode);
+
 	if (ret) {
 		SDE_ERROR("[enc:%d wb:%d] failed to get WB output roi, ret:%d\n",
 				DRMID(phys_enc->parent), WBID(wb_enc), ret);
@@ -1245,7 +1249,6 @@ static int _sde_encoder_phys_wb_validate_rotation(struct sde_encoder_phys *phys_
 		return -EINVAL;
 	}
 
-	mode = &crtc_state->mode;
 	sde_crtc_get_resolution(crtc_state->crtc, crtc_state, mode, &src_w, &src_h);
 	if (!src_w || !src_h) {
 		SDE_ERROR("[enc:%d wb:%d] invalid wb input dimensions src_w:%d src_h:%d\n",
@@ -1386,7 +1389,8 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 
 	memset(&wb_roi, 0, sizeof(struct sde_rect));
 
-	rc = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi);
+	rc = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi, mode);
+
 	if (rc) {
 		SDE_ERROR("[enc:%d wb:%d] failed to get roi; ret:%d\n",
 				DRMID(phys_enc->parent), WBID(wb_enc), rc);
@@ -1973,7 +1977,7 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 		wb_roi->h = 0;
 	} else {
 		fb = sde_wb_get_output_fb(wb_enc->wb_dev);
-		sde_wb_get_output_roi(wb_enc->wb_dev, wb_roi);
+		sde_wb_get_output_roi(wb_enc->wb_dev, wb_roi, &mode);
 	}
 
 	if (!fb) {

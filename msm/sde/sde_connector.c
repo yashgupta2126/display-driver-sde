@@ -2087,12 +2087,17 @@ static void _sde_connector_destroy_fb(struct sde_connector *c_conn,
 	drm_framebuffer_put(c_state->out_fb);
 	c_state->out_fb = NULL;
 
-	if (c_conn)
+	if (c_conn) {
 		c_state->property_values[CONNECTOR_PROP_OUT_FB].value =
 			msm_property_get_default(&c_conn->property_info,
 					CONNECTOR_PROP_OUT_FB);
-	else
+		c_state->property_values[CONNECTOR_PROP_WB_OUT_FB].value =
+			msm_property_get_default(&c_conn->property_info,
+						 CONNECTOR_PROP_WB_OUT_FB);
+	} else {
 		c_state->property_values[CONNECTOR_PROP_OUT_FB].value = ~0;
+		c_state->property_values[CONNECTOR_PROP_WB_OUT_FB].value = ~0;
+	}
 }
 
 static void sde_connector_atomic_destroy_state(struct drm_connector *connector,
@@ -2556,6 +2561,13 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 	uint64_t fence_user_fd;
 	uint64_t __user prev_user_fd;
 	struct sde_hw_ctl *hw_ctl = NULL;
+	struct sde_kms *sde_kms;
+
+	sde_kms = sde_connector_get_kms(connector);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return -EINVAL;
+	}
 
 	c_conn = to_sde_connector(connector);
 
@@ -2571,7 +2583,9 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 	 * client is expected to reset the property to -1 before
 	 * requesting for the retire fence
 	 */
-	if (prev_user_fd == -1) {
+	if (prev_user_fd == -1 ||
+	    (connector->connector_type == DRM_MODE_CONNECTOR_WRITEBACK &&
+	     test_bit(SDE_FEATURE_VIRTUAL_CONNECTOR_WB, sde_kms->catalog->features))) {
 		uint32_t offset;
 
 		offset = sde_connector_get_property(state,
@@ -2583,7 +2597,8 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 		offset++;
 
 		/* get hw_ctl for a wb connector not in cwb mode */
-		if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+		if (c_conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+		    c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
 			struct drm_encoder *drm_enc = sde_connector_best_encoder(connector);
 
 			if (drm_enc && !sde_encoder_in_clone_mode(drm_enc))
@@ -2656,9 +2671,11 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 	idx = msm_property_index(&c_conn->property_info, property);
 	switch (idx) {
 	case CONNECTOR_PROP_OUT_FB:
+	case CONNECTOR_PROP_WB_OUT_FB:
 		rc = _sde_connector_set_prop_out_fb(connector, state, val);
 		break;
 	case CONNECTOR_PROP_RETIRE_FENCE:
+	case CONNECTOR_PROP_WB_RETIRE_FENCE:
 		if (!val)
 			goto end;
 
@@ -2755,7 +2772,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 				c_conn->display);
 
 		/* potentially clean up out_fb if rc != 0 */
-		if ((idx == CONNECTOR_PROP_OUT_FB) && rc)
+		if ((idx == CONNECTOR_PROP_OUT_FB || idx ==  CONNECTOR_PROP_WB_OUT_FB) && rc)
 			_sde_connector_destroy_fb(c_conn, c_state);
 	}
 end:
@@ -2877,7 +2894,8 @@ void sde_connector_commit_reset(struct drm_connector *connector, ktime_t ts)
 		return;
 
 	/* get hw_ctl for a wb connector */
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+	    c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
 		hw_ctl = sde_encoder_get_hw_ctl(c_conn);
 
 	/* signal connector's retire fence */
@@ -3089,7 +3107,8 @@ static void _sde_connector_init_hw_fence(struct sde_connector *c_conn,
 		sde_kms->catalog->is_vrr_hw_fence_enable = true;
 
 	/* Enable hw-fences for wb retire-fence */
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL && sde_kms->catalog->hw_fence_rev)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_WRITEBACK &&
+	    sde_kms->catalog->hw_fence_rev)
 		c_conn->hwfence_wb_retire_fences_enable = true;
 }
 
@@ -3499,8 +3518,8 @@ static int sde_connector_init_debugfs(struct drm_connector *connector)
 		}
 	}
 
-	if (sde_connector->connector_type == DRM_MODE_CONNECTOR_VIRTUAL &&
-			sde_kms->catalog->hw_fence_rev)
+	if (sde_connector->connector_type == DRM_MODE_CONNECTOR_WRITEBACK &&
+	    sde_kms->catalog->hw_fence_rev)
 		debugfs_create_bool("wb_hw_fence_enable", 0600, connector->debugfs_entry,
 			&sde_connector->hwfence_wb_retire_fences_enable);
 
@@ -3909,6 +3928,10 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 		return -EINVAL;
 	}
 
+	sde_kms_info_add_keyint(info, "virtual_connector_as_writeback",
+				test_bit(SDE_FEATURE_VIRTUAL_CONNECTOR_WB,
+					 sde_kms->catalog->features));
+
 	list_for_each_entry(mode, &conn->modes, head) {
 
 		memset(&mode_info, 0, sizeof(mode_info));
@@ -4249,12 +4272,22 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 		"hdr_metadata", 0x0, 0, ~0, 0, CONNECTOR_PROP_HDR_METADATA);
 
 	if (!sde_encoder_is_loopback_display(c_conn->encoder)) {
-		msm_property_install_volatile_range(&c_conn->property_info,
-			"RETIRE_FENCE", 0x0, 0, ~0, 0, CONNECTOR_PROP_RETIRE_FENCE);
 
-		msm_property_install_volatile_range(&c_conn->property_info,
-			"RETIRE_FENCE_OFFSET", 0x0, 0, ~0, 0,
-			CONN_PROP_RETIRE_FENCE_OFFSET);
+		if (connector_type == DRM_MODE_CONNECTOR_WRITEBACK &&
+		    test_bit(SDE_FEATURE_VIRTUAL_CONNECTOR_WB,
+			     sde_kms->catalog->features)) {
+			msm_property_install_volatile_range(&c_conn->property_info,
+				"WRITEBACK_OUT_FENCE_PTR", 0x0, 0, ~0, 0,
+				CONNECTOR_PROP_WB_RETIRE_FENCE);
+		} else {
+			msm_property_install_volatile_range(&c_conn->property_info,
+				"RETIRE_FENCE", 0x0, 0, ~0, 0,
+				CONNECTOR_PROP_RETIRE_FENCE);
+
+			msm_property_install_volatile_range(&c_conn->property_info,
+				"RETIRE_FENCE_OFFSET", 0x0, 0, ~0, 0,
+				CONN_PROP_RETIRE_FENCE_OFFSET);
+		}
 	}
 
 	msm_property_install_range(&c_conn->property_info, "autorefresh",
@@ -4310,8 +4343,9 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 		}
 	}
 
-	if ((display_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE)
-			|| (connector_type == DRM_MODE_CONNECTOR_VIRTUAL))
+	if ((display_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE) ||
+	    (connector_type == DRM_MODE_CONNECTOR_WRITEBACK ||
+	     connector_type == DRM_MODE_CONNECTOR_VIRTUAL))
 		msm_property_install_enum(&c_conn->property_info, "frame_trigger_mode",
 			0, 0, e_frame_trigger_mode, ARRAY_SIZE(e_frame_trigger_mode), 0,
 			CONNECTOR_PROP_CMD_FRAME_TRIGGER_MODE);
@@ -4358,6 +4392,12 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			CONNECTOR_PROP_BRIGHTNESS);
 		}
 	}
+
+	if (connector_type == DRM_MODE_CONNECTOR_WRITEBACK &&
+	    test_bit(SDE_FEATURE_VIRTUAL_CONNECTOR_WB, sde_kms->catalog->features))
+		msm_property_install_range(&c_conn->property_info, "virtual_as_writeback",
+					   DRM_MODE_PROP_IMMUTABLE, 0, 1, 1,
+					   CONNECTOR_PROP_VIRTUAL_WB);
 
 	return 0;
 }

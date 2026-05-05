@@ -936,6 +936,7 @@ enum sde_ppb_size_option {
  */
 enum sde_mdss_features {
 	SDE_FEATURE_CDP,
+	SDE_FEATURE_VIRTUAL_CONNECTOR_WB,
 	SDE_FEATURE_DIM_LAYER,
 	SDE_FEATURE_WB_UBWC,
 	SDE_FEATURE_CWB,

@@ -14,8 +14,13 @@
 #include "sde_dbg.h"
 
 #define DP_VCO_HSCLK_RATE_1620MHZDIV1000	1620000UL
+#define DP_VCO_HSCLK_RATE_2160MHZDIV1000	2160000UL
+#define DP_VCO_HSCLK_RATE_2430MHZDIV1000	2430000UL
 #define DP_VCO_HSCLK_RATE_2700MHZDIV1000	2700000UL
+#define DP_VCO_HSCLK_RATE_3240MHZDIV1000	3240000UL
+#define DP_VCO_HSCLK_RATE_4320MHZDIV1000	4320000UL
 #define DP_VCO_HSCLK_RATE_5400MHZDIV1000	5400000UL
+#define DP_VCO_HSCLK_RATE_5940MHZDIV1000	5940000UL
 #define DP_VCO_HSCLK_RATE_8100MHZDIV1000	8100000UL
 #define DP_PHY_VCO_DIV				0x0070
 
@@ -44,6 +49,7 @@ enum dp_pll_revision {
 	EDP_PLL_4NM,
 	EDP_PLL_5NM,
 	DP_PLL_3NM_V1,
+	EDP_PLL_7NM,
 };
 
 enum hsclk_rate {
@@ -52,6 +58,19 @@ enum hsclk_rate {
 	HSCLK_RATE_5400MHZ,
 	HSCLK_RATE_8100MHZ,
 	HSCLK_RATE_MAX,
+};
+
+enum edp_hsclk_rate {
+	EDP_HSCLK_RATE_1620MHZ,
+	EDP_HSCLK_RATE_2160MHZ,
+	EDP_HSCLK_RATE_2430MHZ,
+	EDP_HSCLK_RATE_2700MHZ,
+	EDP_HSCLK_RATE_3240MHZ,
+	EDP_HSCLK_RATE_4320MHZ,
+	EDP_HSCLK_RATE_5400MHZ,
+	EDP_HSCLK_RATE_5940MHZ,
+	EDP_HSCLK_RATE_8100MHZ,
+	EDP_HSCLK_RATE_MAX,
 };
 
 static inline const char *dp_pll_get_revision(enum dp_pll_revision rev)
@@ -65,6 +84,7 @@ static inline const char *dp_pll_get_revision(enum dp_pll_revision rev)
 	case EDP_PLL_4NM:       return "EDP_PLL_4NM";
 	case EDP_PLL_5NM:	return "EDP_PLL_5NM";
 	case DP_PLL_3NM_V1:	return "DP_PLL_3NM_V1";
+	case EDP_PLL_7NM:	return "EDP_PLL_7NM";
 	default:		return "???";
 	}
 }
@@ -172,6 +192,7 @@ int dp_pll_clock_register_4nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_4nm(struct dp_pll *pll);
 int dp_pll_clock_register_3nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_3nm(struct dp_pll *pll);
+int edp_pll_clock_register_7nm(struct dp_pll *pll);
 
 struct dp_pll_in {
 	struct platform_device *pdev;

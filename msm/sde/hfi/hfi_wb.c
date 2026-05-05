@@ -26,7 +26,7 @@ static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 
 	HFI_POPULATE_RECT(&src_roi, 0, 0, mode->hdisplay, mode->vdisplay, false);
 
-	sde_wb_get_output_roi(wb_dev, &roi);
+	sde_wb_get_output_roi(wb_dev, &roi, mode);
 	HFI_POPULATE_RECT(&dst_roi, roi.x, roi.y, roi.w, roi.h, false);
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_ROI;

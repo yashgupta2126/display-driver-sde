@@ -64,6 +64,7 @@ module_entry(
             "msm/dp/dp_pll_5nm.c",
             "msm/dp/dp_pll_4nm.c",
             "msm/dp/dp_pll_3nm.c",
+            "msm/dp/edp_pll_7nm.c",
             "msm/dp/edp_pll_5nm.c",
             "msm/dp/edp_pll_4nm.c",
         ],
