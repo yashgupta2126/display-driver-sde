@@ -1100,4 +1100,12 @@ int dsi_display_ctl_post_transition(void *display);
 int dsi_display_get_phandle_count(struct dsi_display *display,
 			const char *propname);
 
+/**
+ * dsi_display_get_drm_panel_from_dt() - get upstream drm_panel from DT
+ * @display:    Handle to display
+ *
+ * return: pointer to drm_panel or ERR_PTR on failure.
+ */
+struct drm_panel *dsi_display_get_drm_panel_from_dt(struct dsi_display *display);
+
 #endif /* _DSI_DISPLAY_H_ */

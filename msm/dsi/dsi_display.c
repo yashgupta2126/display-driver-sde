@@ -6093,6 +6093,34 @@ static int dsi_display_get_display_node_count(struct dsi_display *display)
 	return dsi_display_node_count;
 }
 
+struct drm_panel* dsi_display_get_drm_panel_from_dt(struct dsi_display *display)
+{
+	struct device_node *np;
+	struct device_node *panel_np;
+	struct drm_panel *panel;
+
+	if (!display || !display->pdev)
+		return ERR_PTR(-EINVAL);
+
+	np = display->pdev->dev.of_node;
+	if (!np)
+		return ERR_PTR(-ENODEV);
+
+	panel_np = of_graph_get_remote_node(np, 0 , 0);
+	if (!panel_np)
+		return ERR_PTR(-ENODEV);
+
+	panel = of_drm_find_panel(panel_np);
+
+	of_node_put(panel_np);
+
+	if (IS_ERR(panel)){
+		DSI_DEBUG("DRM panel not found\n");
+	}
+
+	return panel;
+}
+
 /**
  * dsi_display_bind - bind dsi device with controlling device
  * @dev:        Pointer to base of platform device
@@ -6133,8 +6161,10 @@ static int dsi_display_bind(struct device *dev,
 				drm, display);
 		return -EINVAL;
 	}
-	if (!display->panel_node && !display->fw)
+
+	if (!display->panel_node && !display->fw && !display->has_drm_panel_or_bridge) {
 		return 0;
+	}
 
 	/* defer bind if ext bridge driver is not loaded */
 	if (display->panel && display->panel->host_config.ext_bridge_mode) {
@@ -6257,6 +6287,23 @@ static int dsi_display_bind(struct device *dev,
 
 	dsi_display_update_byte_intf_div(display);
 
+	if (display->has_drm_panel_or_bridge &&
+	    display->panel && !display->panel->host_config.ext_bridge_mode) {
+		struct drm_panel *panel;
+
+		panel = dsi_display_get_drm_panel_from_dt(display);
+		if (!IS_ERR_OR_NULL(panel)) {
+			display->panel->drm_panel    = panel;
+			display->panel->has_drm_panel = true;
+
+			/* Update stub name to the real upstream driver name */
+			if (panel->dev && panel->dev->driver){
+				display->name = panel->dev->driver->name;
+			}
+			DSI_INFO("[%s] bind with DRM panel\n", display->name);
+		}
+	}
+
 	rc = dsi_panel_drv_init(display->panel, &display->host);
 	if (rc) {
 		if (rc != -EPROBE_DEFER)
@@ -6342,7 +6389,7 @@ static void dsi_display_unbind(struct device *dev,
 	}
 
 	display = platform_get_drvdata(pdev);
-	if (!display || !display->panel_node) {
+	if (!display || (!display->panel_node && !display->has_drm_panel_or_bridge)) {
 		DSI_ERR("invalid display\n");
 		return;
 	}
@@ -6664,15 +6711,18 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	}
 
 	display = platform_get_drvdata(pdev);
-	if (!display || !display->panel_node) {
-		DSI_ERR("invalid param, display %pK, display panel node %pK\n",
-				display, display ? display->panel_node : NULL);
+	if (!display || (!display->panel_node && !display->has_drm_panel_or_bridge)) {
+		DSI_ERR("invalid param, display %pK, panel_node %pK has_drm_panel_or_bridge=%d\n",
+				display,
+				display ? display->panel_node : NULL,
+				display ? display->has_drm_panel_or_bridge : 0);
 		rc = -EINVAL;
 		goto end;
 	}
 
-	/* decrement ref count */
-	of_node_put(display->panel_node);
+	/* decrement ref count only when a DT panel node was used */
+	if (display->panel_node)
+		of_node_put(display->panel_node);
 
 	if (display->post_cmd_tx_workq) {
 		flush_workqueue(display->post_cmd_tx_workq);
@@ -6718,10 +6768,12 @@ int dsi_display_get_num_of_displays(struct drm_device *dev)
 			continue;
 
 		if ((display && display->panel_node) ||
-					(display && display->fw))
+					(display && display->fw) ||
+					(display && display->has_drm_panel_or_bridge))
 			count++;
 	}
 
+	DSI_DEBUG("display count is %d\n", count);
 	return count;
 }
 
@@ -6745,10 +6797,12 @@ int dsi_display_get_active_displays(struct drm_device *dev,
 			continue;
 
 		if ((display && display->panel_node) ||
-					(display && display->fw))
+					(display && display->fw) ||
+					(display && display->has_drm_panel_or_bridge))
 			display_array[count++] = display;
 	}
 
+	DSI_DEBUG("active display count is %d\n", count);
 	return count;
 }
 

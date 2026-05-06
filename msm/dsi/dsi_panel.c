@@ -4673,23 +4673,35 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	}
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
-	drm_panel_init(&panel->drm_panel, &panel->mipi_device.dev,
-			NULL, DRM_MODE_CONNECTOR_DSI);
-	panel->mipi_device.dev.of_node = of_node;
 
-	drm_panel_add(&panel->drm_panel);
+	panel->drm_panel = kzalloc(sizeof(*panel->drm_panel), GFP_KERNEL);
+	if (!panel->drm_panel) {
+		rc = -ENOMEM;
+		goto error;
+	}
+	drm_panel_init(panel->drm_panel, parent, NULL, DRM_MODE_CONNECTOR_DSI);
+	drm_panel_add(panel->drm_panel);
 
 	mutex_init(&panel->panel_lock);
 
 	return panel;
 error:
+	if (panel->drm_panel) {
+		drm_panel_remove(panel->drm_panel);
+		kfree(panel->drm_panel);
+	}
 	kfree(panel);
 	return ERR_PTR(rc);
 }
 
 void dsi_panel_put(struct dsi_panel *panel)
 {
-	drm_panel_remove(&panel->drm_panel);
+	if (!panel->has_drm_panel) {
+		drm_panel_remove(panel->drm_panel);
+		kfree(panel->drm_panel);
+	}
+
+	panel->drm_panel = NULL;
 
 	/* free resources allocated for ESD check */
 	dsi_panel_esd_config_deinit(&panel->esd_config);
@@ -4707,6 +4719,10 @@ int dsi_panel_drv_init(struct dsi_panel *panel,
 	if (!panel || !host) {
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
+	}
+
+	if (panel->has_drm_panel) {
+		return rc;
 	}
 
 	mutex_lock(&panel->panel_lock);
