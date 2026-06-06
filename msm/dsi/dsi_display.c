@@ -18,6 +18,8 @@
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
 #include "sde_connector.h"
+#include "sde_dsc_helper.h"
+#include "hfi_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
 #include "dsi_panel.h"
@@ -7298,7 +7300,7 @@ struct drm_panel *dsi_display_get_drm_panel(struct dsi_display *display)
 		return NULL;
 	}
 
-	return &display->panel->drm_panel;
+	return display->panel->drm_panel;
 }
 
 bool dsi_display_has_dsc_switch_support(struct dsi_display *display)
@@ -8220,6 +8222,175 @@ error:
 	return rc;
 }
 
+/**
+ * dsi_display_populate_modes_from_drm_panel - Allocate and populate
+ * display->modes[] from an DRM panel. Converts drm_display_mode
+ * timing, derives DSC config from mipi_dsi_device::dsc, and computes
+ * transfer time. Called once from dsi_display_get_drm_modes().
+ *
+ * @display:  dsi_display handle
+ * @drm_mode: mode reported by the drm panel's get_modes() callback
+ * @dsi:      mipi_dsi_device carrying DSC config from panel probe
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int dsi_display_populate_modes_from_drm_panel(struct dsi_display *display,
+				       const struct drm_display_mode *drm_mode,
+				       const struct mipi_dsi_device *dsi)
+{
+	struct dsi_display_mode *mode;
+	struct dsi_display_mode_priv_info *priv_info;
+	int rc = 0;
+
+	if (!display || !display->panel || !drm_mode || !dsi) {
+		DSI_ERR("%s: invalid display or panel\n", __func__);
+		return -EINVAL;
+	}
+
+	if (display->modes) {
+		DSI_DEBUG("%s: modes already populated, skipping\n", __func__);
+		return 0;
+	}
+
+	if (!display->ctrl[0].ctrl) {
+		DSI_ERR("%s: ctrl not initialized\n", __func__);
+		return -EINVAL;
+	}
+
+	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
+	if (!mode)
+		return -ENOMEM;
+
+	priv_info = kzalloc(sizeof(*priv_info), GFP_KERNEL);
+	if (!priv_info) {
+		kfree(mode);
+		return -ENOMEM;
+	}
+
+	mode->priv_info = priv_info;
+
+	/* Timing: convert drm_display_mode to dsi_mode_info (same as convert_to_dsi_mode). */
+	mode->timing.h_active      = drm_mode->hdisplay;
+	mode->timing.h_back_porch  = drm_mode->htotal - drm_mode->hsync_end;
+	mode->timing.h_sync_width  = drm_mode->htotal -
+					(drm_mode->hsync_start + mode->timing.h_back_porch);
+	mode->timing.h_front_porch = drm_mode->hsync_start - drm_mode->hdisplay;
+	mode->timing.h_skew        = drm_mode->hskew;
+
+	mode->timing.v_active      = drm_mode->vdisplay;
+	mode->timing.v_back_porch  = drm_mode->vtotal - drm_mode->vsync_end;
+	mode->timing.v_sync_width  = drm_mode->vtotal -
+					(drm_mode->vsync_start + mode->timing.v_back_porch);
+	mode->timing.v_front_porch = drm_mode->vsync_start - drm_mode->vdisplay;
+
+	mode->timing.h_sync_polarity = !!(drm_mode->flags & DRM_MODE_FLAG_PHSYNC);
+	mode->timing.v_sync_polarity = !!(drm_mode->flags & DRM_MODE_FLAG_PVSYNC);
+	mode->timing.refresh_rate    = drm_mode_vrefresh(drm_mode);
+
+	/* Read widebus support from HW before DSC block which uses it. */
+	priv_info->widebus_support = display->ctrl[0].ctrl->hw.widebus_support;
+
+	/* DSC: copy geometry from the drm panel's mipi_dsi_device::dsc. */
+	if (dsi->dsc) {
+		mode->timing.dsc_enabled = true;
+		priv_info->dsc_enabled   = true;
+
+		priv_info->dsc.config          = *dsi->dsc;
+		priv_info->dsc.config.pic_width  = mode->timing.h_active;
+		priv_info->dsc.config.pic_height = mode->timing.v_active;
+
+		/* slice_per_pkt: upstream also hardcoded this. */
+		priv_info->dsc.slice_per_pkt = 1;
+
+		/* scr_rev=0 selects the DSC_V11_8BPC_8BPP RC table
+		 * in sde_dsc_populate_dsc_config.
+		 */
+		priv_info->dsc.scr_rev = 0;
+
+		priv_info->dsc.rc_override_v1 = true;
+
+		priv_info->dsc.chroma_format      = MSM_CHROMA_444;
+		priv_info->dsc.source_color_space = MSM_RGB;
+
+		/* Compute RC parameters (same call as dsi_panel_parse_dsc_params). */
+		rc = sde_dsc_populate_dsc_config(&priv_info->dsc.config,
+						 priv_info->dsc.scr_rev);
+		if (rc) {
+			DSI_ERR("[%s] sde_dsc_populate_dsc_config failed rc=%d\n",
+				display->name, rc);
+			kfree(priv_info);
+			kfree(mode);
+			return rc;
+		}
+
+		/* Compute pkt_per_line, bytes_per_pkt, eol_byte_num (same as DT path). */
+		rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc,
+							 mode->timing.h_active,
+							 priv_info->widebus_support);
+		if (rc) {
+			DSI_ERR("[%s] sde_dsc_populate_dsc_private_params failed rc=%d\n",
+				display->name, rc);
+			kfree(priv_info);
+			kfree(mode);
+			return rc;
+		}
+
+		mode->timing.dsc = &priv_info->dsc;
+
+		/* TODO:remove the hardcoded topology, derive dynamically based on DPU catalog.*/
+		priv_info->topology.num_lm    = 2;
+		priv_info->topology.num_enc   = 2;
+		priv_info->topology.num_intf  = 1;
+		priv_info->topology.comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+
+		/* pclk_scale: DSC compression ratio
+		 * (same formula as dsi_panel_parse_dsc_params).
+		 */
+		priv_info->pclk_scale.numer = dsi->dsc->bits_per_pixel >> 4;
+		priv_info->pclk_scale.denom = 3 * dsi->dsc->bits_per_component;
+		mode->timing.pclk_scale = priv_info->pclk_scale;
+	} else {
+		/* Non-DSC: single LM, single INTF, no compression. */
+		/* TODO:remove the hardcoded topology, derive dynamically based on DPU catalog.*/
+		priv_info->topology.num_lm   = 1;
+		priv_info->topology.num_enc  = 0;
+		priv_info->topology.num_intf = 1;
+	}
+
+	/*
+	 * pixel_clk_khz is overwritten by dsi_panel_calc_dsi_transfer_time below.
+	 */
+	mode->panel_mode_caps   = display->panel->panel_mode;
+	mode->pixel_format_caps = display->panel->host_config.dst_format;
+	mode->bpp               = dsi_pixel_format_to_bpp(mode->pixel_format_caps);
+	mode->mode_idx           = 0;
+	mode->is_preferred       = true;
+
+	dsi_panel_calc_dsi_transfer_time(&display->panel->host_config,
+					 mode,
+					 display->ctrl[0].ctrl->frame_threshold_time_us);
+
+	priv_info->dsi_transfer_time_us = mode->timing.dsi_transfer_time_us;
+	priv_info->min_dsi_clk_hz       = mode->timing.min_dsi_clk_hz;
+	priv_info->mdp_transfer_time_us = mode->timing.mdp_transfer_time_us;
+
+	mutex_lock(&display->display_lock);
+	display->modes = mode;
+	mutex_unlock(&display->display_lock);
+
+	DSI_DEBUG("[%s] drm panel mode: %ux%u@%uHz"
+		"pixel_clk=%u kHz DSC=%d topology=<%u %u %u>\n",
+		 display->name,
+		 mode->timing.h_active, mode->timing.v_active,
+		 mode->timing.refresh_rate, mode->pixel_clk_khz,
+		 priv_info->dsc_enabled,
+		 priv_info->topology.num_lm,
+		 priv_info->topology.num_enc,
+		 priv_info->topology.num_intf);
+
+	return 0;
+}
+
 int dsi_display_get_panel_vfp(void *dsi_display,
 	int h_active, int v_active)
 {
@@ -8283,6 +8454,11 @@ int dsi_display_get_default_lms(void *dsi_display, u32 *num_lm)
 	int rc = 0;
 
 	*num_lm = 0;
+
+	if (display->panel && display->panel->has_drm_panel) {
+		*num_lm = display->panel->lm_count;
+		return 0;
+	}
 
 	mutex_lock(&display->display_lock);
 	count = display->panel->num_display_modes;

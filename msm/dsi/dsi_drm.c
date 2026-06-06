@@ -10,6 +10,8 @@
 #include <drm/drm_edid.h>
 #include <linux/version.h>
 
+#include <drm/drm_panel.h>
+#include <drm/drm_modes.h>
 #include "msm_kms.h"
 #include "sde_connector.h"
 #include "dsi_drm.h"
@@ -17,6 +19,7 @@
 #include "sde_dbg.h"
 #include "msm_drv.h"
 #include "sde_encoder.h"
+#include "sde_dsc_helper.h"
 
 #define to_dsi_bridge(x)     container_of((x), struct dsi_bridge, base)
 #define to_dsi_state(x)      container_of((x), struct dsi_connector_state, base)
@@ -1276,6 +1279,72 @@ static void dsi_drm_update_checksum(struct edid *edid)
 	edid->checksum = 0x100 - (sum & 0xFF);
 }
 
+/**
+ * dsi_display_get_drm_modes - get modes from an DRM panel and
+ *                              populate display->modes[] with priv_info.
+ * @display:   dsi_display whose panel has has_drm_panel=true
+ * @connector: DRM connector to add the probed modes to
+ *
+ * Called from dsi_connector_get_modes() when the panel is
+ * DRM panel. Enumerates modes via drm_panel_get_modes().
+ *
+ * Return: number of modes added, or 0 on failure.
+ */
+static int dsi_display_get_drm_modes(struct dsi_display *display,
+				      struct drm_connector *connector)
+{
+	struct drm_panel *panel;
+	struct drm_display_mode *drm_mode;
+	struct mipi_dsi_device *dsi;
+	int count = 0;
+	int rc;
+
+	if (!display || !display->panel || !connector) {
+		DSI_ERR("invalid params\n");
+		return 0;
+	}
+
+	panel = display->panel->drm_panel;
+	if (!panel) {
+		DSI_ERR("[%s] has_drm_panel set but drm_panel pointer is NULL\n",
+			display->name);
+		return 0;
+	}
+
+	count = drm_panel_get_modes(panel, connector);
+	if (count <= 0) {
+		DSI_ERR("[%s] drm_panel_get_modes returned %d\n",
+			display->name, count);
+		return 0;
+	}
+
+	display->panel->num_display_modes = count;
+	display->panel->num_timing_nodes  = count;
+
+	dsi = &display->panel->mipi_device;
+	drm_mode = list_first_entry_or_null(&connector->probed_modes,
+					    struct drm_display_mode, head);
+
+	display->panel->phy_props.panel_width_mm  = connector->display_info.width_mm;
+	display->panel->phy_props.panel_height_mm = connector->display_info.height_mm;
+
+	/* record pic dimensions for DSC; RC tables populated in dsi_bridge_pre_enable */
+	if (drm_mode && dsi->dsc) {
+		dsi->dsc->pic_width  = drm_mode->hdisplay;
+		dsi->dsc->pic_height = drm_mode->vdisplay;
+	}
+
+	if (drm_mode) {
+		rc = dsi_display_populate_modes_from_drm_panel(display, drm_mode, dsi);
+		if (rc) {
+			DSI_ERR("[%s] failed to populate display modes rc=%d\n",
+				display->name, rc);
+			return 0;
+		}
+	}
+	return count;
+}
+
 int dsi_connector_get_modes(struct drm_connector *connector, void *data,
 		const struct msm_resource_caps_info *avail_res)
 {
@@ -1299,6 +1368,11 @@ int dsi_connector_get_modes(struct drm_connector *connector, void *data,
 	edid_size = min_t(u32, sizeof(edid), EDID_LENGTH);
 
 	memcpy(&edid, edid_buf, edid_size);
+
+	if (display->panel->has_drm_panel) {
+		count = dsi_display_get_drm_modes(display, connector);
+		goto end;
+	}
 
 	rc = dsi_display_get_mode_count(display, &count);
 	if (rc) {

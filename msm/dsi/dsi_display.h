@@ -469,6 +469,20 @@ int dsi_display_get_modes(struct dsi_display *display,
 			  struct dsi_display_mode **modes);
 
 /**
+ * dsi_display_populate_modes_from_drm_panel - Populate display->modes[] for the
+ * DRM panel using the drm_display_mode
+ * and mipi_dsi_device DSC config from the panel driver.
+ *
+ * @display:  Handle to display.
+ * @drm_mode: drm_display_mode from the panel's get_modes() callback.
+ * @dsi:      mipi_dsi_device whose dsc pointer carries the DSC config.
+ * Return: 0 on success, negative error code on failure.
+ */
+int dsi_display_populate_modes_from_drm_panel(struct dsi_display *display,
+				       const struct drm_display_mode *drm_mode,
+				       const struct mipi_dsi_device *dsi);
+
+/**
  * dsi_display_put_mode() - free up mode created for the display
  * @display:            Handle to display.
  * @mode:               Display mode to be freed up
