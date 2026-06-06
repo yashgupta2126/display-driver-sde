@@ -256,6 +256,10 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		return -EINVAL;
 
 	panel = dsi_display->panel;
+
+	if (panel->has_drm_panel)
+		return 0;
+
 	sde_conn = to_sde_connector(connector);
 
 	mutex_lock(&panel->panel_lock);
