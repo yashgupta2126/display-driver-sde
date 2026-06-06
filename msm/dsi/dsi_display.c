@@ -5934,6 +5934,10 @@ int dsi_display_splash_res_cleanup(struct  dsi_display *display)
 {
 	int rc = 0;
 
+	if (display->panel && display->panel->has_drm_panel) {
+		return 0;
+	}
+
 	if (!display->is_cont_splash_enabled)
 		return 0;
 

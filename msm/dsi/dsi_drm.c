@@ -229,6 +229,24 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	if (bridge->encoder->crtc->state->active_changed)
 		atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
 
+	/*
+	 * For DRM panels with DSC, populate RC tables now that
+	 * pic_width/pic_height were set during mode enumeration.
+	 */
+	if (display->panel && display->panel->has_drm_panel) {
+		struct mipi_dsi_device *dsi = &display->panel->mipi_device;
+
+		if (dsi->dsc) {
+			dsi->dsc->convert_rgb = 1;
+			rc = sde_dsc_populate_dsc_config(dsi->dsc, 0);
+			if (rc) {
+				DSI_ERR("[%s] sde_dsc_populate_dsc_config failed rc=%d\n",
+					display->name, rc);
+				return;
+			}
+		}
+	}
+
 	/* By this point mode should have been validated through mode_fixup */
 	rc = dsi_display_set_mode(c_bridge->display,
 			&(c_bridge->dsi_mode), 0x0);
@@ -551,6 +569,20 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 		return false;
 	}
 
+	if (display->panel && display->panel->has_drm_panel) {
+		*adjusted_mode = *mode;
+		convert_to_dsi_mode(mode, &dsi_mode);
+		rc = dsi_display_find_mode(display, &dsi_mode, NULL, &panel_dsi_mode);
+		if (rc) {
+			DSI_ERR("[%s] drm_panel: requested mode not found, rc=%d\n",
+				display->name, rc);
+			return false;
+		}
+		dsi_convert_to_msm_mode(panel_dsi_mode, &conn_state->msm_mode);
+		conn_state->msm_mode.base = adjusted_mode;
+		return true;
+	}
+
 	/*
 	 * if no timing defined in panel, it must be external mode
 	 * and we'll use empty priv info to populate the mode
@@ -666,6 +698,11 @@ int dsi_conn_get_lm_from_mode(void *display, const struct drm_display_mode *drm_
 		return rc;
 	}
 
+	/*TODO: remove the hardcoded topology, derive dynamically based on DPU catalog.*/
+	if (dsi_display->panel && dsi_display->panel->has_drm_panel){
+		return dsi_display->panel->lm_count;
+	}
+
 	convert_to_dsi_mode(drm_mode, &dsi_mode);
 	drm_to_dsi_update_overlap(dsi_display, &dsi_mode);
 
@@ -692,6 +729,13 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 
 	if (!drm_mode || !mode_info)
 		return -EINVAL;
+
+	if (dsi_display && dsi_display->panel &&
+	    dsi_display->panel->has_drm_panel && !dsi_display->modes) {
+		DSI_ERR("[%s] drm_panel modes not yet populated\n",
+			dsi_display->name);
+		return -EINVAL;
+	}
 
 	convert_to_dsi_mode(drm_mode, &partial_dsi_mode);
 	drm_to_dsi_update_overlap(dsi_display, &partial_dsi_mode);
@@ -1052,6 +1096,11 @@ void dsi_conn_set_submode_blob_info(struct drm_connector *conn,
 
 	if (!conn || !display || !drm_mode) {
 		DSI_ERR("Invalid params\n");
+		return;
+	}
+
+	if (dsi_display && dsi_display->panel &&
+	    dsi_display->panel->has_drm_panel) {
 		return;
 	}
 
@@ -1445,6 +1494,7 @@ enum drm_mode_status dsi_conn_mode_valid(struct drm_connector *connector,
 		struct drm_display_mode *mode,
 		void *display, const struct msm_resource_caps_info *avail_res)
 {
+	struct dsi_display *dsi_display = display;
 	struct dsi_display_mode dsi_mode;
 	struct dsi_display_mode *full_dsi_mode = NULL;
 	struct sde_connector_state *conn_state;
@@ -1453,6 +1503,10 @@ enum drm_mode_status dsi_conn_mode_valid(struct drm_connector *connector,
 	if (!connector || !mode) {
 		DSI_ERR("Invalid params\n");
 		return MODE_ERROR;
+	}
+
+	if (dsi_display && dsi_display->panel && dsi_display->panel->has_drm_panel){
+		return MODE_OK;
 	}
 
 	convert_to_dsi_mode(mode, &dsi_mode);
@@ -1708,6 +1762,10 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 
 	if (!disp || !disp->panel) {
 		DSI_ERR("invalid parameters");
+		return;
+	}
+
+	if(disp->panel->has_drm_panel){
 		return;
 	}
 
