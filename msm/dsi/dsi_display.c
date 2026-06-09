@@ -9821,6 +9821,10 @@ static int dsi_display_set_roi(struct dsi_display *display,
 	if (!display || !rois || !display->panel)
 		return -EINVAL;
 
+	if (display->panel->has_drm_panel){
+		return 0;
+	}
+
 	cur_mode = display->panel->cur_mode;
 	if (!cur_mode)
 		return 0;

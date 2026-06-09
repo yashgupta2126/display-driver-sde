@@ -5400,6 +5400,10 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	/* If LP11_INIT is set, panel will be powered up during prepare() */
@@ -5427,6 +5431,9 @@ int dsi_panel_update_pps(struct dsi_panel *panel)
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
 	}
+
+	if (panel->has_drm_panel)
+		return 0;
 
 	mutex_lock(&panel->panel_lock);
 
@@ -5587,6 +5594,9 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
 	}
+
+	if (panel->has_drm_panel)
+		return 0;
 
 	mutex_lock(&panel->panel_lock);
 
@@ -6224,6 +6234,23 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0))
+		drm_panel_prepare(panel->drm_panel);
+#else
+		rc = drm_panel_prepare(panel->drm_panel);
+		if (rc) {
+			DSI_ERR("[%s] drm_panel_prepare failed rc=%d\n",
+				panel->name, rc);
+			return rc;
+		}
+#endif
+		mutex_lock(&panel->panel_lock);
+		panel->panel_initialized = true;
+		mutex_unlock(&panel->panel_lock);
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_ON, false);
@@ -6264,6 +6291,17 @@ int dsi_panel_post_enable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0))
+		drm_panel_enable(panel->drm_panel);
+#else
+		rc = drm_panel_enable(panel->drm_panel);
+		if (rc)
+			DSI_ERR("[%s] drm_panel_enable failed rc=%d\n", panel->name, rc);
+#endif
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	if (panel->need_post_on_supply) {
@@ -6295,6 +6333,17 @@ int dsi_panel_pre_disable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0))
+		drm_panel_disable(panel->drm_panel);
+#else
+		rc = drm_panel_disable(panel->drm_panel);
+		if (rc)
+			DSI_ERR("[%s] drm_panel_disable failed rc=%d\n", panel->name, rc);
+#endif
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	if (gpio_is_valid(panel->bl_config.en_gpio))
@@ -6319,6 +6368,22 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	if (!panel) {
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
+	}
+
+	if (panel->has_drm_panel) {
+		mutex_lock(&panel->panel_lock);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0))
+		drm_panel_unprepare(panel->drm_panel);
+#else
+		rc = drm_panel_unprepare(panel->drm_panel);
+		if (rc)
+			DSI_ERR("[%s] drm_panel_unprepare failed rc=%d\n",
+				panel->name, rc);
+#endif
+		panel->panel_initialized = false;
+		panel->power_mode = SDE_MODE_DPMS_OFF;
+		mutex_unlock(&panel->panel_lock);
+		return 0;
 	}
 
 	mutex_lock(&panel->panel_lock);
@@ -6363,6 +6428,10 @@ int dsi_panel_unprepare(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_OFF, false);
@@ -6392,6 +6461,10 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 	if (!panel) {
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
+	}
+
+	if (panel->has_drm_panel) {
+		return 0;
 	}
 
 	mutex_lock(&panel->panel_lock);
