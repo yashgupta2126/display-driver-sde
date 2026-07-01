@@ -8,7 +8,7 @@
 #define _DSI_PARSER_H_
 
 #include <linux/of.h>
-#include <linux/of_gpio.h>
+#include <linux/msm_gpio.h>
 #include <linux/version.h>
 
 #if IS_ENABLED(CONFIG_DSI_PARSER)

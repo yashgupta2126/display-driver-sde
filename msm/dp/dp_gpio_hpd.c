@@ -16,7 +16,7 @@
 #include <linux/pinctrl/consumer.h>
 #endif
 #include <linux/sde_io_util.h>
-#include <linux/of_gpio.h>
+#include <linux/msm_gpio.h>
 #include "dp_gpio_hpd.h"
 #include "dp_debug.h"
 

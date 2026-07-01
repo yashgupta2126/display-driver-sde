@@ -6,7 +6,7 @@
 
 #include <linux/list.h>
 #include <linux/of.h>
-#include <linux/of_gpio.h>
+#include <linux/msm_gpio.h>
 #include <linux/err.h>
 #include <linux/version.h>
 #include <linux/ktime.h>
