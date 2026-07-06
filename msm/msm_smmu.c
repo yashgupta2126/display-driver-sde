@@ -26,6 +26,7 @@
 	__has_include(<linux/qcom-iommu-util.h>) && \
 	__has_include(<soc/qcom/secure_buffer.h>)
 #include <linux/qcom-dma-mapping.h>
+#include <linux/iommu.h>
 #include <linux/msm_dma_iommu_mapping.h>
 #include <linux/qcom-iommu-util.h>
 #include <soc/qcom/secure_buffer.h>
@@ -603,8 +604,14 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	dma_set_max_seg_size(client->dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(client->dev, (unsigned long)DMA_BIT_MASK(64));
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0))
+	if (client->domain->cookie_type == IOMMU_COOKIE_NONE)
+		iommu_set_fault_handler(client->domain,
+				msm_smmu_fault_handler, (void *)client);
+#else
 	iommu_set_fault_handler(client->domain,
-			msm_smmu_fault_handler, (void *)client);
+				msm_smmu_fault_handler, (void *)client);
+#endif
 
 	DRM_INFO("Created domain %s, secure=%d\n",
 			domain->label, domain->secure);
