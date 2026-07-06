@@ -808,7 +808,7 @@ int edp_pll_clock_register_7nm(struct dp_pll *pll)
 	}
 	pdev = pll->pdev;
 
-	pll->clk_data = kzalloc_obj(pll->clk_data, GFP_KERNEL);
+	pll->clk_data = kzalloc(sizeof(*pll->clk_data), GFP_KERNEL);
 	if (!pll->clk_data)
 		return -ENOMEM;
 
