@@ -7,7 +7,7 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
-#include <linux/of_gpio.h>
+#include <linux/msm_gpio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pwm.h>
 #include <linux/backlight.h>

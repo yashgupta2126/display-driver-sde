@@ -24,6 +24,7 @@
 #include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/regmap.h>
+#include <linux/version.h>
 #include "dp_hpd.h"
 #include "dp_debug.h"
 #include "dp_pll.h"
@@ -706,7 +707,6 @@ static unsigned long dp_pll_link_clk_recalc_rate(struct clk_hw *hw,
 {
 	struct dp_pll *pll = NULL;
 	struct dp_pll_vco_clk *pll_link = NULL;
-	unsigned long rate = 0;
 
 	if (!hw) {
 		DP_ERR("invalid input parameters\n");
@@ -716,11 +716,10 @@ static unsigned long dp_pll_link_clk_recalc_rate(struct clk_hw *hw,
 	pll_link = to_dp_vco_hw(hw);
 	pll = pll_link->priv;
 
-	rate = pll->vco_rate * pll->clk_factor / 10;
-
-	return rate;
+	return pll->vco_rate * pll->clk_factor / 10;
 }
 
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 static long dp_pll_link_clk_round(struct clk_hw *hw, unsigned long rate,
 			unsigned long *parent_rate)
 {
@@ -739,6 +738,26 @@ static long dp_pll_link_clk_round(struct clk_hw *hw, unsigned long rate,
 
 	return rate;
 }
+#else
+static int dp_pll_link_clk_determine_rate(struct clk_hw *hw,
+					  struct clk_rate_request *req)
+{
+	struct dp_pll *pll = NULL;
+	struct dp_pll_vco_clk *pll_link = NULL;
+
+	if (!hw) {
+		DP_ERR("invalid input parameters\n");
+		return -EINVAL;
+	}
+
+	pll_link = to_dp_vco_hw(hw);
+	pll = pll_link->priv;
+
+	req->rate = pll->vco_rate * pll->clk_factor / 10;
+
+	return 0;
+}
+#endif
 
 static unsigned long dp_pll_vco_div_clk_get_rate(struct dp_pll *pll)
 {
@@ -767,20 +786,37 @@ static unsigned long dp_pll_vco_div_clk_recalc_rate(struct clk_hw *hw,
 	return dp_pll_vco_div_clk_get_rate(pll);
 }
 
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 static long dp_pll_vco_div_clk_round(struct clk_hw *hw, unsigned long rate,
 			unsigned long *parent_rate)
 {
 	return dp_pll_vco_div_clk_recalc_rate(hw, *parent_rate);
 }
+#else
+static int dp_pll_vco_div_clk_determine_rate(struct clk_hw *hw,
+					     struct clk_rate_request *req)
+{
+	req->rate = dp_pll_vco_div_clk_recalc_rate(hw, req->best_parent_rate);
+	return 0;
+}
+#endif
 
 static const struct clk_ops pll_link_clk_ops = {
 	.recalc_rate = dp_pll_link_clk_recalc_rate,
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 	.round_rate = dp_pll_link_clk_round,
+#else
+	.determine_rate = dp_pll_link_clk_determine_rate,
+#endif
 };
 
 static const struct clk_ops pll_vco_div_clk_ops = {
 	.recalc_rate = dp_pll_vco_div_clk_recalc_rate,
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 	.round_rate = dp_pll_vco_div_clk_round,
+#else
+	.determine_rate = dp_pll_vco_div_clk_determine_rate,
+#endif
 };
 
 static struct clk_init_data phy_pll_clks[DP_PLL_NUM_CLKS] = {

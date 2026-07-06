@@ -9,6 +9,7 @@
 #include <linux/unistd.h>
 #include <linux/gcd.h>
 #include <linux/math.h>
+#include <linux/version.h>
 
 #include "hdmi_pll.h"
 #include "hdmi_reg_snps.h"
@@ -506,11 +507,20 @@ static unsigned long hdmi_pll_vco_div_clk_recalc_rate(struct clk_hw *hw,
 	return pll->vco_rate;
 }
 
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 static long hdmi_pll_vco_div_clk_round(struct clk_hw *hw,
 		unsigned long rate, unsigned long *parent_rate)
 {
 	return hdmi_pll_vco_div_clk_recalc_rate(hw, *parent_rate);
 }
+#else
+static int hdmi_pll_vco_div_clk_determine_rate(struct clk_hw *hw,
+					       struct clk_rate_request *req)
+{
+	req->rate = hdmi_pll_vco_div_clk_recalc_rate(hw, req->best_parent_rate);
+	return 0;
+}
+#endif
 
 /*
  * Adding this redundant function to better understand
@@ -609,7 +619,11 @@ static int hdmi_pll_snps_unprepare(struct hdmi_pll *pll)
 
 static const struct clk_ops hdmi_phy_pll_clk_ops = {
 	.recalc_rate    = hdmi_pll_vco_div_clk_recalc_rate,
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 	.round_rate     = hdmi_pll_vco_div_clk_round,
+#else
+	.determine_rate = hdmi_pll_vco_div_clk_determine_rate,
+#endif
 };
 
 static struct clk_init_data phy_pll_clks[HDMI_PLL_NUM_CLKS] = {

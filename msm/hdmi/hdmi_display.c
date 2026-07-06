@@ -4,7 +4,7 @@
  */
 
 #include <linux/of.h>
-#include <linux/of_gpio.h>
+#include <linux/msm_gpio.h>
 #include <linux/of_irq.h>
 #include <linux/version.h>
 #include <drm/drm_probe_helper.h>

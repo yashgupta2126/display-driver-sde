@@ -3,7 +3,7 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
-#include <linux/of_gpio.h>
+#include <linux/msm_gpio.h>
 #include <linux/clk.h>
 #include <linux/of_platform.h>
 #include <linux/pinctrl/pinctrl.h>
