@@ -696,15 +696,25 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	struct dp_display *display = data;
 	struct msm_drm_private *priv = NULL;
 
+	dev = display->drm_dev;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0))
+	bridge = devm_drm_bridge_alloc(dev->dev, struct dp_bridge, base,
+				       &dp_bridge_ops);
+	if (IS_ERR(bridge)) {
+		rc = PTR_ERR(bridge);
+		goto error;
+	}
+#else
 	bridge = kzalloc(sizeof(*bridge), GFP_KERNEL);
 	if (!bridge) {
 		rc = -ENOMEM;
 		goto error;
 	}
-
-	dev = display->drm_dev;
-	bridge->display = display;
 	bridge->base.funcs = &dp_bridge_ops;
+#endif
+
+	bridge->display = display;
 	bridge->base.encoder = encoder;
 
 	priv = dev->dev_private;
@@ -712,7 +722,11 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
 	if (rc) {
 		DP_ERR("failed to attach bridge, rc=%d\n", rc);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0))
 		goto error_free_bridge;
+#else
+		goto error;
+#endif
 	}
 
 	rc = display->request_irq(display);
@@ -727,8 +741,10 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	display->max_dsc_count = max_dsc_count;
 
 	return 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0))
 error_free_bridge:
 	kfree(bridge);
+#endif
 error:
 	return rc;
 }
