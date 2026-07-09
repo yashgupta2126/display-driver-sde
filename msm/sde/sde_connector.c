@@ -496,6 +496,9 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 	if (!display)
 		return 0;
 
+	if (display->has_drm_panel_or_bridge)
+		return 0;
+
 	bl_config = &display->panel->bl_config;
 
 	if (bl_config->type != DSI_BACKLIGHT_DCS &&
@@ -1880,7 +1883,7 @@ void sde_connector_helper_bridge_disable(struct drm_connector *connector)
 	if (!sde_in_trusted_vm(sde_kms) && c_conn->bl_device && !poms_pending) {
 		c_conn->bl_device->props.power = FB_BLANK_POWERDOWN;
 		c_conn->bl_device->props.state |= BL_CORE_FBBLANK;
-		backlight_update_status(c_conn->bl_device);
+		if(!display->panel->has_drm_panel) backlight_update_status(c_conn->bl_device);
 	}
 
 	c_conn->allow_bl_update = false;
@@ -1927,7 +1930,7 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 	if (!sde_in_trusted_vm(sde_kms) && c_conn->bl_device && !display->poms_pending) {
 		c_conn->bl_device->props.power = FB_BLANK_UNBLANK;
 		c_conn->bl_device->props.state &= ~BL_CORE_FBBLANK;
-		backlight_update_status(c_conn->bl_device);
+		if(!display->panel->has_drm_panel) backlight_update_status(c_conn->bl_device);
 	}
 }
 

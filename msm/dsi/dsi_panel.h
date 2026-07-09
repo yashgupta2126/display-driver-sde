@@ -253,7 +253,8 @@ struct dsi_panel {
 	struct device_node *rgb_right_led_node;
 
 	struct mutex panel_lock;
-	struct drm_panel drm_panel;
+	struct drm_panel *drm_panel;
+	bool has_drm_panel;
 	struct mipi_dsi_host *host;
 	struct device *parent;
 
@@ -356,7 +357,8 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *parser_node,
 				const char *type,
 				int topology_override,
-				bool trusted_vm_env);
+				bool trusted_vm_env,
+				bool has_drm_panel_or_bridge);
 
 void dsi_panel_put(struct dsi_panel *panel);
 

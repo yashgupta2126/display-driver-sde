@@ -18,6 +18,8 @@
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
 #include "sde_connector.h"
+#include "sde_dsc_helper.h"
+#include "hfi_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
 #include "dsi_panel.h"
@@ -254,6 +256,10 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		return -EINVAL;
 
 	panel = dsi_display->panel;
+
+	if (panel->has_drm_panel)
+		return 0;
+
 	sde_conn = to_sde_connector(connector);
 
 	mutex_lock(&panel->panel_lock);
@@ -3463,15 +3469,116 @@ error:
 	return rc;
 }
 
+static int dsi_display_bind(struct device *dev, struct device *master, void *data);
+static void dsi_display_unbind(struct device *dev, struct device *master, void *data);
+
+static const struct component_ops dsi_display_comp_ops = {
+	.bind = dsi_display_bind,
+	.unbind = dsi_display_unbind,
+};
+
+/**
+ * dsi_panel_update_from_mipi_dsi_device - Populate dsi_panel stub from the
+ *                                          mipi_dsi_device config.
+ *
+ * @panel: stub panel created by dsi_panel_get() with has_drm_panel_or_bridge
+ * @dsi:   mipi_dsi_device populated by the panel driver in probe()
+ */
+static int dsi_panel_update_from_mipi_dsi_device(struct dsi_panel *panel,
+						   const struct mipi_dsi_device *dsi)
+{
+	if (!panel || !dsi) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	struct dsi_host_common_cfg *host = &panel->host_config;
+
+	/* store upstream config fields into panel->mipi_device */
+	panel->mipi_device.lanes      = dsi->lanes;
+	panel->mipi_device.format     = dsi->format;
+	panel->mipi_device.mode_flags = dsi->mode_flags;
+	panel->mipi_device.dsc        = dsi->dsc;
+	panel->mipi_device.host       = dsi->host;
+
+	DSI_INFO("[%s] applying mipi_dsi_device config "
+		 "lanes=%d format=%d mode_flags=0x%lx\n",
+		 panel->name, dsi->lanes, dsi->format, dsi->mode_flags);
+
+	/* data lanes */
+	host->data_lanes = 0;
+	if (dsi->lanes > 0)
+		host->data_lanes |= DSI_DATA_LANE_0;
+	if (dsi->lanes > 1)
+		host->data_lanes |= DSI_DATA_LANE_1;
+	if (dsi->lanes > 2)
+		host->data_lanes |= DSI_DATA_LANE_2;
+	if (dsi->lanes > 3)
+		host->data_lanes |= DSI_DATA_LANE_3;
+	host->num_data_lanes = dsi->lanes;
+
+	/* pixel format */
+	switch (dsi->format) {
+	case MIPI_DSI_FMT_RGB888:
+		host->dst_format = DSI_PIXEL_FORMAT_RGB888;
+		break;
+	case MIPI_DSI_FMT_RGB666:
+		host->dst_format = DSI_PIXEL_FORMAT_RGB666_LOOSE;
+		break;
+	case MIPI_DSI_FMT_RGB666_PACKED:
+		host->dst_format = DSI_PIXEL_FORMAT_RGB666;
+		break;
+	case MIPI_DSI_FMT_RGB565:
+	default:
+		host->dst_format = DSI_PIXEL_FORMAT_RGB565;
+		break;
+	}
+
+	/*
+	 * Panel mode: video if MIPI_DSI_MODE_VIDEO is set, otherwise cmd mode.
+	 */
+	if (dsi->mode_flags & MIPI_DSI_MODE_VIDEO)
+		panel->panel_mode = DSI_OP_VIDEO_MODE;
+	else
+		panel->panel_mode = DSI_OP_CMD_MODE;
+
+	/*
+	 * Clock lane HS: stay continuous unless MIPI_DSI_CLOCK_NON_CONTINUOUS
+	 * is set by the upstream driver.
+	 */
+	host->force_hs_clk_lane = !(dsi->mode_flags & MIPI_DSI_CLOCK_NON_CONTINUOUS);
+	return 0;
+}
+
 static int dsi_host_attach(struct mipi_dsi_host *host,
 			   struct mipi_dsi_device *dsi)
 {
+	struct dsi_display *display = to_dsi_display(host);
+	struct platform_device *pdev = display->pdev;
+	int rc = 0;
+
+	rc = dsi_panel_update_from_mipi_dsi_device(display->panel, dsi);
+	if (rc)
+		DSI_ERR("Invalid Params rc=%d\n", rc);
+
+	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
+	if (rc)
+		DSI_ERR("component add failed rc=%d\n", rc);
+
+	DSI_DEBUG("component add success\n");
 	return 0;
 }
 
 static int dsi_host_detach(struct mipi_dsi_host *host,
 			   struct mipi_dsi_device *dsi)
 {
+	struct dsi_display *display;
+	display = to_dsi_display(host);
+
+	struct platform_device *pdev = display->pdev;
+
+	component_del(&pdev->dev, &dsi_display_comp_ops);
+
 	return 0;
 }
 
@@ -3661,6 +3768,7 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 	struct clk *esync_clk_rcg;
 	struct clk *dsi_clk;
 	struct dsi_clk_link_set *pll = &display->clock_info.pll_clks;
+	const char *pll_clk_names[2];
 	char *dsi_clock_name;
 
 	if (!strcmp(display->display_type, "primary"))
@@ -3673,9 +3781,24 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 
 	num_clk = dsi_display_get_clocks_count(display, dsi_clock_name);
 
+	if (num_clk <= 0) {
+		if (!strcmp(display->display_type, "primary")) {
+			pll_clk_names[0] = "pll_byte_clk0";
+			pll_clk_names[1] = "pll_dsi_clk0";
+		} else {
+			pll_clk_names[0] = "pll_byte_clk1";
+			pll_clk_names[1] = "pll_dsi_clk1";
+		}
+		num_clk = ARRAY_SIZE(pll_clk_names);
+		DSI_DEBUG("DT clocks not found ,using fallback parent PLL\n");
+	} else {
+		for (i = 0; i < num_clk; i++)
+			dsi_display_get_clock_name(display, dsi_clock_name, i,
+						   &pll_clk_names[i]);
+	}
+
 	for (i = 0; i < num_clk; i++) {
-		dsi_display_get_clock_name(display, dsi_clock_name, i,
-						&clk_name);
+		clk_name = pll_clk_names[i];
 
 		DSI_DEBUG("clock name:%s\n", clk_name);
 
@@ -4303,6 +4426,21 @@ static int dsi_display_parse_dt(struct dsi_display *display)
 		dsi_phy_name = "qcom,dsi-sec-phy-num";
 	}
 
+	/*TODO : support split display with drm panel/bridge */
+	if (!display->panel_node && display->has_drm_panel_or_bridge) {
+		struct dsi_display_ctrl *ctrl = &display->ctrl[0];
+
+		display->ctrl_count = 1;
+
+		ctrl->ctrl_of_node = of_parse_phandle(of_node, "qcom,dsi-ctrl", 0);
+		of_node_put(ctrl->ctrl_of_node);
+
+		ctrl->phy_of_node = of_parse_phandle(of_node, "qcom,dsi-phy", 0);
+		of_node_put(ctrl->phy_of_node);
+
+		goto skip_phandle_count;
+	}
+
 	display->ctrl_count = dsi_display_get_phandle_count(display,
 					dsi_ctrl_name);
 	phy_count = dsi_display_get_phandle_count(display, dsi_phy_name);
@@ -4338,6 +4476,8 @@ static int dsi_display_parse_dt(struct dsi_display *display)
 		of_node_put(ctrl->phy_of_node);
 	}
 
+skip_phandle_count:
+
 	/* Parse TE data */
 	dsi_display_parse_te_data(display);
 
@@ -4366,7 +4506,8 @@ static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 
 	if (!is_sim_panel(display)) {
 		if (!display->panel->host_config.ext_bridge_mode &&
-				!gpio_is_valid(display->panel->reset_config.reset_gpio)) {
+			!display->has_drm_panel_or_bridge &&
+			!gpio_is_valid(display->panel->reset_config.reset_gpio)) {
 			DSI_ERR("invalid reset gpio for the panel\n");
 			return false;
 		}
@@ -4443,11 +4584,13 @@ static int dsi_display_res_init(struct dsi_display *display)
 	}
 
 	display->panel = dsi_panel_get(&display->pdev->dev,
-				display->panel_node,
-				display->parser_node,
-				display->display_type,
-				display->cmdline_topology,
-				display->trusted_vm_env);
+					display->panel_node,
+					display->parser_node,
+					display->display_type,
+					display->cmdline_topology,
+					display->trusted_vm_env,
+					display->has_drm_panel_or_bridge);
+
 	if (IS_ERR_OR_NULL(display->panel)) {
 		rc = PTR_ERR(display->panel);
 		DSI_ERR("failed to get panel, rc=%d\n", rc);
@@ -4468,11 +4611,28 @@ static int dsi_display_res_init(struct dsi_display *display)
 		struct msm_dsi_phy *phy = display->ctrl[i].phy;
 		struct dsi_host_common_cfg *host = &display->panel->host_config;
 
-		phy->cfg.force_clk_lane_hs =
-			display->panel->host_config.force_hs_clk_lane;
-		phy->cfg.phy_type =
-			display->panel->host_config.phy_type;
+		/*
+		 * dsi_host_attach() derives force_hs_clk_lane from mode_flags and
+		 * stores it in panel->host_config.force_hs_clk_lane so it is
+		 * available here when the PHY is configured.
+		 */
+		if (!display->has_drm_panel_or_bridge) {
+			phy->cfg.force_clk_lane_hs =
+					display->panel->host_config.force_hs_clk_lane;
+		}
 
+		/*
+		 * TODO: Add a new downstream DSI PHY DT property (e.g.
+		 * "qcom,phy-type") and read it here so that platform overlays can
+		 * specify CPHY/DPHY independently of the panel node. For now,
+		 * hardcode to DPHY since nt37801 uses DPHY.
+		 */
+		if (display->has_drm_panel_or_bridge) {
+			phy->cfg.phy_type = DSI_PHY_TYPE_DPHY;
+		} else {
+			phy->cfg.phy_type =
+					display->panel->host_config.phy_type;
+		}
 		/*
 		 * Parse the dynamic clock trim codes for PLL, for video mode panels that have
 		 * dynamic clock property set.
@@ -5589,7 +5749,7 @@ static int _dsi_display_dev_init(struct dsi_display *display)
 		return -EINVAL;
 	}
 
-	if (!display->panel_node && !display->fw)
+	if (!display->panel_node && !display->fw && !display->has_drm_panel_or_bridge)
 		return 0;
 
 	mutex_lock(&display->display_lock);
@@ -5609,6 +5769,13 @@ static int _dsi_display_dev_init(struct dsi_display *display)
 	rc = dsi_display_res_init(display);
 	if (rc) {
 		DSI_ERR("[%s] failed to initialize resources, rc=%d\n",
+		       display->name, rc);
+		goto error;
+	}
+
+	rc = dsi_display_mipi_host_init(display);
+	if (rc) {
+		DSI_ERR("[%s] failed to initialize mipi host, rc=%d\n",
 		       display->name, rc);
 		goto error;
 	}
@@ -5633,6 +5800,11 @@ static int _dsi_display_dev_deinit(struct dsi_display *display)
 	}
 
 	mutex_lock(&display->display_lock);
+
+	rc = dsi_display_mipi_host_deinit(display);
+	if (rc)
+		DSI_ERR("[%s] failed to deinit mipi hosts, rc=%d\n",
+		       display->name, rc);
 
 	rc = dsi_display_res_deinit(display);
 	if (rc)
@@ -5765,6 +5937,10 @@ clk_manager_update:
 int dsi_display_splash_res_cleanup(struct  dsi_display *display)
 {
 	int rc = 0;
+
+	if (display->panel && display->panel->has_drm_panel) {
+		return 0;
+	}
 
 	if (!display->is_cont_splash_enabled)
 		return 0;
@@ -6002,6 +6178,34 @@ static int dsi_display_get_display_node_count(struct dsi_display *display)
 	return dsi_display_node_count;
 }
 
+struct drm_panel* dsi_display_get_drm_panel_from_dt(struct dsi_display *display)
+{
+	struct device_node *np;
+	struct device_node *panel_np;
+	struct drm_panel *panel;
+
+	if (!display || !display->pdev)
+		return ERR_PTR(-EINVAL);
+
+	np = display->pdev->dev.of_node;
+	if (!np)
+		return ERR_PTR(-ENODEV);
+
+	panel_np = of_graph_get_remote_node(np, 0 , 0);
+	if (!panel_np)
+		return ERR_PTR(-ENODEV);
+
+	panel = of_drm_find_panel(panel_np);
+
+	of_node_put(panel_np);
+
+	if (IS_ERR(panel)){
+		DSI_DEBUG("DRM panel not found\n");
+	}
+
+	return panel;
+}
+
 /**
  * dsi_display_bind - bind dsi device with controlling device
  * @dev:        Pointer to base of platform device
@@ -6042,8 +6246,10 @@ static int dsi_display_bind(struct device *dev,
 				drm, display);
 		return -EINVAL;
 	}
-	if (!display->panel_node && !display->fw)
+
+	if (!display->panel_node && !display->fw && !display->has_drm_panel_or_bridge) {
 		return 0;
+	}
 
 	/* defer bind if ext bridge driver is not loaded */
 	if (display->panel && display->panel->host_config.ext_bridge_mode) {
@@ -6165,11 +6371,22 @@ static int dsi_display_bind(struct device *dev,
 	}
 
 	dsi_display_update_byte_intf_div(display);
-	rc = dsi_display_mipi_host_init(display);
-	if (rc) {
-		DSI_ERR("[%s] failed to initialize mipi host, rc=%d\n",
-		       display->name, rc);
-		goto error_ctrl_deinit;
+
+	if (display->has_drm_panel_or_bridge &&
+	    display->panel && !display->panel->host_config.ext_bridge_mode) {
+		struct drm_panel *panel;
+
+		panel = dsi_display_get_drm_panel_from_dt(display);
+		if (!IS_ERR_OR_NULL(panel)) {
+			display->panel->drm_panel    = panel;
+			display->panel->has_drm_panel = true;
+
+			/* Update stub name to the real upstream driver name */
+			if (panel->dev && panel->dev->driver){
+				display->name = panel->dev->driver->name;
+			}
+			DSI_INFO("[%s] bind with DRM panel\n", display->name);
+		}
 	}
 
 	rc = dsi_panel_drv_init(display->panel, &display->host);
@@ -6257,7 +6474,7 @@ static void dsi_display_unbind(struct device *dev,
 	}
 
 	display = platform_get_drvdata(pdev);
-	if (!display || !display->panel_node) {
+	if (!display || (!display->panel_node && !display->has_drm_panel_or_bridge)) {
 		DSI_ERR("invalid display\n");
 		return;
 	}
@@ -6267,11 +6484,12 @@ static void dsi_display_unbind(struct device *dev,
 	/* remove the display from the manager list */
 	dsi_display_manager_unregister(display);
 
-	rc = dsi_display_mipi_host_deinit(display);
-	if (rc)
-		DSI_ERR("[%s] failed to deinit mipi hosts, rc=%d\n",
-		       display->name,
-		       rc);
+	if (display->panel) {
+		rc = display->panel->panel_ops.gpio_release(display->panel);
+		if (rc)
+			DSI_ERR("[%s] failed to release gpios, rc=%d\n", display->panel->name,
+			       rc);
+	}
 
 	display_for_each_ctrl(i, display) {
 		display_ctrl = &display->ctrl[i];
@@ -6294,11 +6512,6 @@ static void dsi_display_unbind(struct device *dev,
 	mutex_unlock(&display->display_lock);
 }
 
-static const struct component_ops dsi_display_comp_ops = {
-	.bind = dsi_display_bind,
-	.unbind = dsi_display_unbind,
-};
-
 static struct platform_driver dsi_display_driver = {
 	.probe = dsi_display_dev_probe,
 	.remove = dsi_display_dev_remove,
@@ -6308,6 +6521,28 @@ static struct platform_driver dsi_display_driver = {
 		.suppress_bind_attrs = true,
 	},
 };
+
+/**
+ * dsi_display_has_drm_panel_or_bridge - detect upstream DRM panel/bridge
+ * @display: dsi_display instance
+ * @node:    OF node of the DSI display controller
+ *
+ * Checks whether a remote device is connected to port@0 of the DSI
+ * controller node via the OF graph.
+ *
+ * Returns true if a remote endpoint is found, false otherwise.
+ */
+static bool dsi_display_has_drm_panel_or_bridge(struct dsi_display *display,
+					    struct device_node *node)
+{
+	struct device_node *remote = of_graph_get_remote_node(node, 0, 0);
+
+	if (!remote)
+		return false;
+
+	of_node_put(remote);
+	return true;
+}
 
 static int dsi_display_prepare_dt_parser(struct dsi_display *display)
 {
@@ -6320,6 +6555,14 @@ static int dsi_display_prepare_dt_parser(struct dsi_display *display)
 	char *display_name_firmware_sec  = "dsi_firmware_display_secondary";
 	bool prim = !strcmp(display->display_type, "primary");
 	int rc = 0;
+
+	if (dsi_display_has_drm_panel_or_bridge(display, node)) {
+		display->panel_node = NULL;
+		display->name = node->name;
+		display->has_drm_panel_or_bridge = true;
+		DSI_INFO("skipping DT panel lookup\n");
+		return 0;
+	}
 
 	if (boot_disp->boot_disp_en) {
 		if (!strcmp(boot_disp->name, "qcom,dsi_prop")) {
@@ -6399,7 +6642,7 @@ static int dsi_display_init(struct dsi_display *display)
 		if (rc) {
 			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
 					display->panel->name, rc);
-			return rc;
+			goto vreg_fail;
 		}
 	}
 
@@ -6420,11 +6663,27 @@ static int dsi_display_init(struct dsi_display *display)
 		display->panel->post_power_enable_status = true;
 	}
 
-	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
-		DSI_ERR("component add failed, rc=%d\n", rc);
+	/*
+	 *  In case of external drm panel/bridge, the component_add()
+	 *  will be called from dsi_host_attach() as part of devm_mipi_dsi_attach()
+	 *  from the external drm panel/bridge driver.
+	 */
+	if (!display->has_drm_panel_or_bridge) {
+		rc = component_add(&pdev->dev, &dsi_display_comp_ops);
+		if (rc){
+			DSI_ERR("component add failed, rc=%d\n", rc);
+			goto comp_add_fail;
+		}
+		DSI_DEBUG("component add success: %s\n", display->name);
+	}
 
-	DSI_DEBUG("component add success: %s\n", display->name);
+	return rc;
+comp_add_fail:
+	if (display->panel)
+		dsi_pwr_enable_regulator(&display->panel->power_info, false);
+vreg_fail:
+	_dsi_display_dev_deinit(display);
+
 end:
 	return rc;
 }
@@ -6537,15 +6796,18 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	}
 
 	display = platform_get_drvdata(pdev);
-	if (!display || !display->panel_node) {
-		DSI_ERR("invalid param, display %pK, display panel node %pK\n",
-				display, display ? display->panel_node : NULL);
+	if (!display || (!display->panel_node && !display->has_drm_panel_or_bridge)) {
+		DSI_ERR("invalid param, display %pK, panel_node %pK has_drm_panel_or_bridge=%d\n",
+				display,
+				display ? display->panel_node : NULL,
+				display ? display->has_drm_panel_or_bridge : 0);
 		rc = -EINVAL;
 		goto end;
 	}
 
-	/* decrement ref count */
-	of_node_put(display->panel_node);
+	/* decrement ref count only when a DT panel node was used */
+	if (display->panel_node)
+		of_node_put(display->panel_node);
 
 	if (display->post_cmd_tx_workq) {
 		flush_workqueue(display->post_cmd_tx_workq);
@@ -6591,10 +6853,12 @@ int dsi_display_get_num_of_displays(struct drm_device *dev)
 			continue;
 
 		if ((display && display->panel_node) ||
-					(display && display->fw))
+					(display && display->fw) ||
+					(display && display->has_drm_panel_or_bridge))
 			count++;
 	}
 
+	DSI_DEBUG("display count is %d\n", count);
 	return count;
 }
 
@@ -6618,10 +6882,12 @@ int dsi_display_get_active_displays(struct drm_device *dev,
 			continue;
 
 		if ((display && display->panel_node) ||
-					(display && display->fw))
+					(display && display->fw) ||
+					(display && display->has_drm_panel_or_bridge))
 			display_array[count++] = display;
 	}
 
+	DSI_DEBUG("active display count is %d\n", count);
 	return count;
 }
 
@@ -7042,7 +7308,7 @@ struct drm_panel *dsi_display_get_drm_panel(struct dsi_display *display)
 		return NULL;
 	}
 
-	return &display->panel->drm_panel;
+	return display->panel->drm_panel;
 }
 
 bool dsi_display_has_dsc_switch_support(struct dsi_display *display)
@@ -7964,6 +8230,175 @@ error:
 	return rc;
 }
 
+/**
+ * dsi_display_populate_modes_from_drm_panel - Allocate and populate
+ * display->modes[] from an DRM panel. Converts drm_display_mode
+ * timing, derives DSC config from mipi_dsi_device::dsc, and computes
+ * transfer time. Called once from dsi_display_get_drm_modes().
+ *
+ * @display:  dsi_display handle
+ * @drm_mode: mode reported by the drm panel's get_modes() callback
+ * @dsi:      mipi_dsi_device carrying DSC config from panel probe
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int dsi_display_populate_modes_from_drm_panel(struct dsi_display *display,
+				       const struct drm_display_mode *drm_mode,
+				       const struct mipi_dsi_device *dsi)
+{
+	struct dsi_display_mode *mode;
+	struct dsi_display_mode_priv_info *priv_info;
+	int rc = 0;
+
+	if (!display || !display->panel || !drm_mode || !dsi) {
+		DSI_ERR("%s: invalid display or panel\n", __func__);
+		return -EINVAL;
+	}
+
+	if (display->modes) {
+		DSI_DEBUG("%s: modes already populated, skipping\n", __func__);
+		return 0;
+	}
+
+	if (!display->ctrl[0].ctrl) {
+		DSI_ERR("%s: ctrl not initialized\n", __func__);
+		return -EINVAL;
+	}
+
+	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
+	if (!mode)
+		return -ENOMEM;
+
+	priv_info = kzalloc(sizeof(*priv_info), GFP_KERNEL);
+	if (!priv_info) {
+		kfree(mode);
+		return -ENOMEM;
+	}
+
+	mode->priv_info = priv_info;
+
+	/* Timing: convert drm_display_mode to dsi_mode_info (same as convert_to_dsi_mode). */
+	mode->timing.h_active      = drm_mode->hdisplay;
+	mode->timing.h_back_porch  = drm_mode->htotal - drm_mode->hsync_end;
+	mode->timing.h_sync_width  = drm_mode->htotal -
+					(drm_mode->hsync_start + mode->timing.h_back_porch);
+	mode->timing.h_front_porch = drm_mode->hsync_start - drm_mode->hdisplay;
+	mode->timing.h_skew        = drm_mode->hskew;
+
+	mode->timing.v_active      = drm_mode->vdisplay;
+	mode->timing.v_back_porch  = drm_mode->vtotal - drm_mode->vsync_end;
+	mode->timing.v_sync_width  = drm_mode->vtotal -
+					(drm_mode->vsync_start + mode->timing.v_back_porch);
+	mode->timing.v_front_porch = drm_mode->vsync_start - drm_mode->vdisplay;
+
+	mode->timing.h_sync_polarity = !!(drm_mode->flags & DRM_MODE_FLAG_PHSYNC);
+	mode->timing.v_sync_polarity = !!(drm_mode->flags & DRM_MODE_FLAG_PVSYNC);
+	mode->timing.refresh_rate    = drm_mode_vrefresh(drm_mode);
+
+	/* Read widebus support from HW before DSC block which uses it. */
+	priv_info->widebus_support = display->ctrl[0].ctrl->hw.widebus_support;
+
+	/* DSC: copy geometry from the drm panel's mipi_dsi_device::dsc. */
+	if (dsi->dsc) {
+		mode->timing.dsc_enabled = true;
+		priv_info->dsc_enabled   = true;
+
+		priv_info->dsc.config          = *dsi->dsc;
+		priv_info->dsc.config.pic_width  = mode->timing.h_active;
+		priv_info->dsc.config.pic_height = mode->timing.v_active;
+
+		/* slice_per_pkt: upstream also hardcoded this. */
+		priv_info->dsc.slice_per_pkt = 1;
+
+		/* scr_rev=0 selects the DSC_V11_8BPC_8BPP RC table
+		 * in sde_dsc_populate_dsc_config.
+		 */
+		priv_info->dsc.scr_rev = 0;
+
+		priv_info->dsc.rc_override_v1 = true;
+
+		priv_info->dsc.chroma_format      = MSM_CHROMA_444;
+		priv_info->dsc.source_color_space = MSM_RGB;
+
+		/* Compute RC parameters (same call as dsi_panel_parse_dsc_params). */
+		rc = sde_dsc_populate_dsc_config(&priv_info->dsc.config,
+						 priv_info->dsc.scr_rev);
+		if (rc) {
+			DSI_ERR("[%s] sde_dsc_populate_dsc_config failed rc=%d\n",
+				display->name, rc);
+			kfree(priv_info);
+			kfree(mode);
+			return rc;
+		}
+
+		/* Compute pkt_per_line, bytes_per_pkt, eol_byte_num (same as DT path). */
+		rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc,
+							 mode->timing.h_active,
+							 priv_info->widebus_support);
+		if (rc) {
+			DSI_ERR("[%s] sde_dsc_populate_dsc_private_params failed rc=%d\n",
+				display->name, rc);
+			kfree(priv_info);
+			kfree(mode);
+			return rc;
+		}
+
+		mode->timing.dsc = &priv_info->dsc;
+
+		/* TODO:remove the hardcoded topology, derive dynamically based on DPU catalog.*/
+		priv_info->topology.num_lm    = 2;
+		priv_info->topology.num_enc   = 2;
+		priv_info->topology.num_intf  = 1;
+		priv_info->topology.comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+
+		/* pclk_scale: DSC compression ratio
+		 * (same formula as dsi_panel_parse_dsc_params).
+		 */
+		priv_info->pclk_scale.numer = dsi->dsc->bits_per_pixel >> 4;
+		priv_info->pclk_scale.denom = 3 * dsi->dsc->bits_per_component;
+		mode->timing.pclk_scale = priv_info->pclk_scale;
+	} else {
+		/* Non-DSC: single LM, single INTF, no compression. */
+		/* TODO:remove the hardcoded topology, derive dynamically based on DPU catalog.*/
+		priv_info->topology.num_lm   = 1;
+		priv_info->topology.num_enc  = 0;
+		priv_info->topology.num_intf = 1;
+	}
+
+	/*
+	 * pixel_clk_khz is overwritten by dsi_panel_calc_dsi_transfer_time below.
+	 */
+	mode->panel_mode_caps   = display->panel->panel_mode;
+	mode->pixel_format_caps = display->panel->host_config.dst_format;
+	mode->bpp               = dsi_pixel_format_to_bpp(mode->pixel_format_caps);
+	mode->mode_idx           = 0;
+	mode->is_preferred       = true;
+
+	dsi_panel_calc_dsi_transfer_time(&display->panel->host_config,
+					 mode,
+					 display->ctrl[0].ctrl->frame_threshold_time_us);
+
+	priv_info->dsi_transfer_time_us = mode->timing.dsi_transfer_time_us;
+	priv_info->min_dsi_clk_hz       = mode->timing.min_dsi_clk_hz;
+	priv_info->mdp_transfer_time_us = mode->timing.mdp_transfer_time_us;
+
+	mutex_lock(&display->display_lock);
+	display->modes = mode;
+	mutex_unlock(&display->display_lock);
+
+	DSI_DEBUG("[%s] drm panel mode: %ux%u@%uHz"
+		"pixel_clk=%u kHz DSC=%d topology=<%u %u %u>\n",
+		 display->name,
+		 mode->timing.h_active, mode->timing.v_active,
+		 mode->timing.refresh_rate, mode->pixel_clk_khz,
+		 priv_info->dsc_enabled,
+		 priv_info->topology.num_lm,
+		 priv_info->topology.num_enc,
+		 priv_info->topology.num_intf);
+
+	return 0;
+}
+
 int dsi_display_get_panel_vfp(void *dsi_display,
 	int h_active, int v_active)
 {
@@ -8027,6 +8462,11 @@ int dsi_display_get_default_lms(void *dsi_display, u32 *num_lm)
 	int rc = 0;
 
 	*num_lm = 0;
+
+	if (display->panel && display->panel->has_drm_panel) {
+		*num_lm = display->panel->lm_count;
+		return 0;
+	}
 
 	mutex_lock(&display->display_lock);
 	count = display->panel->num_display_modes;
@@ -9384,6 +9824,10 @@ static int dsi_display_set_roi(struct dsi_display *display,
 
 	if (!display || !rois || !display->panel)
 		return -EINVAL;
+
+	if (display->panel->has_drm_panel){
+		return 0;
+	}
 
 	cur_mode = display->panel->cur_mode;
 	if (!cur_mode)

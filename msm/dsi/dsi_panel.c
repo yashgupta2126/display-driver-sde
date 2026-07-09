@@ -4494,12 +4494,55 @@ static void dsi_panel_setup_vm_ops(struct dsi_panel *panel, bool trusted_vm_env)
 	}
 }
 
+/**
+ * dsi_panel_initialize_stub - initialize a minimal DSI panel stub
+ * @panel:         pre-allocated, kzalloc-zeroed dsi_panel
+ * @parent:        parent device (DSI host)
+ * @type:          display type string (e.g. "primary")
+ * @trusted_vm_env: whether we are running in a trusted VM environment
+ *
+ * Returns the initialized panel pointer.
+ */
+static struct dsi_panel *dsi_panel_initialize_stub(struct dsi_panel *panel,
+						   struct device *parent,
+						   const char *type,
+						   bool trusted_vm_env)
+{
+	dsi_panel_setup_vm_ops(panel, trusted_vm_env);
+
+	panel->parent      = parent;
+	panel->type        = type;
+	panel->name        = "panel-stub";
+	panel->power_mode  = SDE_MODE_DPMS_OFF;
+	panel->panel_type  = DSI_DISPLAY_PANEL_TYPE_OLED;
+
+	panel->bl_config.bl_scale    = MAX_BL_SCALE_LEVEL;
+	panel->bl_config.bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
+
+	panel->host_config.mdp_cmd_trigger = DSI_TRIGGER_SW;
+	panel->host_config.dma_cmd_trigger = DSI_TRIGGER_SW;
+	panel->host_config.te_mode         = 1;
+
+	panel->cmd_config.wr_mem_start       = 0x2C;
+	panel->cmd_config.wr_mem_continue    = 0x3C;
+	panel->cmd_config.insert_dcs_command = true;
+
+	panel->esync_caps.emsync_switch_enabled = false;
+
+	dsi_panel_update_util(panel, NULL);
+
+	mutex_init(&panel->panel_lock);
+
+	return panel;
+}
+
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
 				struct device_node *parser_node,
 				const char *type,
 				int topology_override,
-				bool trusted_vm_env)
+				bool trusted_vm_env,
+				bool has_drm_panel_or_bridge)
 {
 	struct dsi_panel *panel;
 	struct dsi_parser_utils *utils;
@@ -4509,6 +4552,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
 		return ERR_PTR(-ENOMEM);
+
+	if (has_drm_panel_or_bridge)
+		return dsi_panel_initialize_stub(panel, parent, type, trusted_vm_env);
 
 	dsi_panel_setup_vm_ops(panel, trusted_vm_env);
 
@@ -4627,23 +4673,35 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	}
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
-	drm_panel_init(&panel->drm_panel, &panel->mipi_device.dev,
-			NULL, DRM_MODE_CONNECTOR_DSI);
-	panel->mipi_device.dev.of_node = of_node;
 
-	drm_panel_add(&panel->drm_panel);
+	panel->drm_panel = kzalloc(sizeof(*panel->drm_panel), GFP_KERNEL);
+	if (!panel->drm_panel) {
+		rc = -ENOMEM;
+		goto error;
+	}
+	drm_panel_init(panel->drm_panel, parent, NULL, DRM_MODE_CONNECTOR_DSI);
+	drm_panel_add(panel->drm_panel);
 
 	mutex_init(&panel->panel_lock);
 
 	return panel;
 error:
+	if (panel->drm_panel) {
+		drm_panel_remove(panel->drm_panel);
+		kfree(panel->drm_panel);
+	}
 	kfree(panel);
 	return ERR_PTR(rc);
 }
 
 void dsi_panel_put(struct dsi_panel *panel)
 {
-	drm_panel_remove(&panel->drm_panel);
+	if (!panel->has_drm_panel) {
+		drm_panel_remove(panel->drm_panel);
+		kfree(panel->drm_panel);
+	}
+
+	panel->drm_panel = NULL;
 
 	/* free resources allocated for ESD check */
 	dsi_panel_esd_config_deinit(&panel->esd_config);
@@ -4661,6 +4719,10 @@ int dsi_panel_drv_init(struct dsi_panel *panel,
 	if (!panel || !host) {
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
+	}
+
+	if (panel->has_drm_panel) {
+		return rc;
 	}
 
 	mutex_lock(&panel->panel_lock);
@@ -5338,6 +5400,10 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	/* If LP11_INIT is set, panel will be powered up during prepare() */
@@ -5365,6 +5431,9 @@ int dsi_panel_update_pps(struct dsi_panel *panel)
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
 	}
+
+	if (panel->has_drm_panel)
+		return 0;
 
 	mutex_lock(&panel->panel_lock);
 
@@ -5525,6 +5594,9 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
 	}
+
+	if (panel->has_drm_panel)
+		return 0;
 
 	mutex_lock(&panel->panel_lock);
 
@@ -6162,6 +6234,23 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0))
+		drm_panel_prepare(panel->drm_panel);
+#else
+		rc = drm_panel_prepare(panel->drm_panel);
+		if (rc) {
+			DSI_ERR("[%s] drm_panel_prepare failed rc=%d\n",
+				panel->name, rc);
+			return rc;
+		}
+#endif
+		mutex_lock(&panel->panel_lock);
+		panel->panel_initialized = true;
+		mutex_unlock(&panel->panel_lock);
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_ON, false);
@@ -6202,6 +6291,17 @@ int dsi_panel_post_enable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0))
+		drm_panel_enable(panel->drm_panel);
+#else
+		rc = drm_panel_enable(panel->drm_panel);
+		if (rc)
+			DSI_ERR("[%s] drm_panel_enable failed rc=%d\n", panel->name, rc);
+#endif
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	if (panel->need_post_on_supply) {
@@ -6233,6 +6333,17 @@ int dsi_panel_pre_disable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0))
+		drm_panel_disable(panel->drm_panel);
+#else
+		rc = drm_panel_disable(panel->drm_panel);
+		if (rc)
+			DSI_ERR("[%s] drm_panel_disable failed rc=%d\n", panel->name, rc);
+#endif
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	if (gpio_is_valid(panel->bl_config.en_gpio))
@@ -6257,6 +6368,22 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	if (!panel) {
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
+	}
+
+	if (panel->has_drm_panel) {
+		mutex_lock(&panel->panel_lock);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0))
+		drm_panel_unprepare(panel->drm_panel);
+#else
+		rc = drm_panel_unprepare(panel->drm_panel);
+		if (rc)
+			DSI_ERR("[%s] drm_panel_unprepare failed rc=%d\n",
+				panel->name, rc);
+#endif
+		panel->panel_initialized = false;
+		panel->power_mode = SDE_MODE_DPMS_OFF;
+		mutex_unlock(&panel->panel_lock);
+		return 0;
 	}
 
 	mutex_lock(&panel->panel_lock);
@@ -6301,6 +6428,10 @@ int dsi_panel_unprepare(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->has_drm_panel) {
+		return 0;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_OFF, false);
@@ -6330,6 +6461,10 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 	if (!panel) {
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
+	}
+
+	if (panel->has_drm_panel) {
+		return 0;
 	}
 
 	mutex_lock(&panel->panel_lock);
